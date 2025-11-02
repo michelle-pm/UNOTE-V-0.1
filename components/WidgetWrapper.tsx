@@ -26,7 +26,7 @@ interface WidgetWrapperProps {
   currentUser: UserType | null;
   currentUserRole: ProjectMemberRole | 'owner' | null;
   projectUsers: UserType[];
-  isProjectTeam: boolean;
+  isTeamProject: boolean;
   isWidgetEditable: boolean;
 // FIX: Changed type to allow null to match the function signature from Dashboard.
   onToggleCommentPane: (widgetId: string | null) => void;
@@ -35,7 +35,7 @@ interface WidgetWrapperProps {
 const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   children, widget, onRemove, onCopy, onUpdateWidgetData,
   onToggleFolder, onInitiateAddWidget, isNested,
-  currentUser, currentUserRole, projectUsers, isProjectTeam, isWidgetEditable,
+  currentUser, currentUserRole, projectUsers, isTeamProject, isWidgetEditable,
   onToggleCommentPane
 }) => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -178,7 +178,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
                     {isWidgetEditable && (
                         <div className="flex items-center gap-0 no-drag">
-                             {isProjectTeam && ['owner', 'editor'].includes(currentUserRole || '') && (
+                             {isTeamProject && ['owner', 'editor'].includes(currentUserRole || '') && (
                                 <div className="relative" ref={menuRef}>
                                     <button onClick={() => setIsAssignMenuOpen(!isAssignMenuOpen)} className="p-1 rounded-full text-text-secondary hover:text-text-light hover:bg-white/10 transition-colors">
                                         <User size={14} />

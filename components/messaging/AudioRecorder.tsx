@@ -4,7 +4,8 @@ import { motion } from 'framer-motion';
 
 interface AudioRecorderProps {
     onStop: (data: { url: string, duration: number }) => void;
-    onCancel: () => void;
+    // FIX: Changed the signature to accept an optional argument. This resolves the "Expected 1 arguments, but got 0" error by making the type compatible with calls that pass an argument (like implicit event handlers or error handlers) and calls that don't.
+    onCancel: (error?: any) => void;
 }
 
 const AudioRecorder: React.FC<AudioRecorderProps> = ({ onStop, onCancel }) => {
@@ -14,7 +15,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onStop, onCancel }) => {
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     // FIX: Changed NodeJS.Timeout to number for browser compatibility.
-    const timerRef = useRef<number>();
+    const timerRef = useRef<number | undefined>();
     const audioRef = useRef<HTMLAudioElement>(null);
 
     useEffect(() => {
@@ -45,7 +46,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onStop, onCancel }) => {
 
             } catch (err) {
                 console.error("Error accessing microphone:", err);
-                onCancel();
+                // FIX: Pass the error to the onCancel callback to satisfy the function signature that expects an argument.
+                onCancel(err);
             }
         };
 
@@ -73,7 +75,9 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onStop, onCancel }) => {
         if (recordedUrl) {
             const reader = new FileReader();
             reader.onload = (e) => {
-                onStop({ url: e.target?.result as string, duration });
+                if (e.target?.result) {
+                    onStop({ url: e.target.result as string, duration });
+                }
             }
             fetch(recordedUrl).then(res => res.blob()).then(blob => reader.readAsDataURL(blob));
         }
@@ -105,7 +109,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onStop, onCancel }) => {
                     </button>
                     <div className="flex-grow bg-white/10 h-1 rounded-full" />
                     <span className="font-mono text-sm text-text-secondary">{formatTime(duration)}</span>
-                     <button onClick={onCancel} className="p-2 text-red-400">
+                     <button onClick={() => onCancel()} className="p-2 text-red-400">
                         <Trash2 size={20} />
                     </button>
                     <button onClick={handleSend} className="p-2 text-accent">

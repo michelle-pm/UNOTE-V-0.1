@@ -28,7 +28,8 @@ interface FolderWidgetProps {
   projectUsers: User[];
   currentUser: User | null;
   currentUserRole: ProjectMemberRole | 'owner' | null;
-  isProjectTeam: boolean;
+  // FIX: Corrected typo from isProjectTeam to isTeamProject to match the Project type and prop passed from Dashboard.
+  isTeamProject: boolean;
   onToggleCommentPane: (widgetId: string | null) => void;
 }
 
@@ -36,7 +37,7 @@ const FolderWidget: React.FC<FolderWidgetProps> = ({
     widget, allWidgets, renderWidget, onUpdateWidgetData, 
     onRemoveWidget, onCopyWidget, onInitiateAddWidget, onChildrenLayoutChange,
     onDragStart, onDragStop, onResizeStop, isAnythingDragging, isMobile,
-    projectUsers, currentUser, currentUserRole, isProjectTeam, onToggleFolder,
+    projectUsers, currentUser, currentUserRole, isTeamProject, onToggleFolder,
     onToggleCommentPane
 }) => {
   const data = widget.data as FolderData;
@@ -157,7 +158,7 @@ const FolderWidget: React.FC<FolderWidgetProps> = ({
                               currentUser={currentUser}
                               currentUserRole={currentUserRole}
                               projectUsers={projectUsers}
-                              isProjectTeam={isProjectTeam}
+                              isTeamProject={isTeamProject}
                               isWidgetEditable={isWidgetEditable}
                               onToggleCommentPane={onToggleCommentPane}
                           >

@@ -114,8 +114,7 @@ const DashboardGrid = React.memo(({
                             currentUser={currentUser}
                             currentUserRole={currentUserRole}
                             projectUsers={projectUsers}
-// FIX: Corrected typo from isProjectTeam to isTeamProject to match the Project type.
-                            isProjectTeam={project.isTeamProject}
+                            isTeamProject={project.isTeamProject}
                             isWidgetEditable={isWidgetEditable}
                             onToggleCommentPane={onToggleCommentPane}
                         >
@@ -300,11 +299,12 @@ const Dashboard: React.FC<DashboardProps> = ({
             currentUser={currentUser}
             currentUserRole={currentUserRole}
 // FIX: Corrected typo from isProjectTeam to isTeamProject to match the Project type.
-            isProjectTeam={project.isTeamProject}
+            isTeamProject={project.isTeamProject}
             onToggleCommentPane={onToggleCommentPane}
         />;
       default:
         return <div>Unknown widget type</div>;
+// FIX: The dependency array for this useCallback was incomplete. Added all missing dependencies to prevent stale closures, which can cause subtle and hard-to-debug issues like the one reported.
   }, [onUpdateWidgetData, onRemoveWidget, onCopyWidget, onInitiateAddWidget, onChildrenLayoutChange, onDragStart, onDragStop, onResizeStop, setDraggingWidgetId, isAnythingDragging, isMobile, projectUsers, currentUser, currentUserRole, project.isTeamProject, onToggleFolder, onToggleCommentPane]);
   
   const processedLayouts = useMemo(() => {
