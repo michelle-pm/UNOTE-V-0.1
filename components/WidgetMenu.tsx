@@ -1,5 +1,4 @@
 import React from 'react';
-// FIX: Import Variants type from framer-motion to resolve typing issues.
 import { motion, Variants } from 'framer-motion';
 import { WidgetType } from '../types';
 import { LayoutDashboard, Type, BarChart2, PieChart, ListChecks, Image, FileText, Newspaper, Columns, Folder, Target, Paperclip } from 'lucide-react';
@@ -25,7 +24,6 @@ const widgetOptions = [
 ];
 
 // Optimized animation variants for the menu and its items
-// FIX: Explicitly typed with Variants to fix incorrect type inference for the 'ease' property.
 const menuVariants: Variants = {
   hidden: { opacity: 0, y: 20 },
   visible: { 
@@ -49,7 +47,6 @@ const gridContainerVariants: Variants = {
   hidden: {}
 };
 
-// FIX: Explicitly typed with Variants to fix incorrect type inference for the 'ease' property.
 const gridItemVariants: Variants = {
   hidden: { opacity: 0, y: 10 },
   visible: { 

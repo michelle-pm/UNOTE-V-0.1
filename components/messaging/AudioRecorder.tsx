@@ -4,7 +4,6 @@ import { motion } from 'framer-motion';
 
 interface AudioRecorderProps {
     onStop: (data: { url: string, duration: number }) => void;
-    // FIX: Changed the signature to accept an optional argument. This resolves the "Expected 1 arguments, but got 0" error by making the type compatible with calls that pass an argument (like implicit event handlers or error handlers) and calls that don't.
     onCancel: (error?: any) => void;
 }
 
@@ -14,7 +13,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onStop, onCancel }) => {
     const [duration, setDuration] = useState(0);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
-    // FIX: Changed NodeJS.Timeout to number for browser compatibility.
     const timerRef = useRef<number | undefined>();
     const audioRef = useRef<HTMLAudioElement>(null);
 
@@ -39,14 +37,12 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onStop, onCancel }) => {
 
                 mediaRecorder.start();
                 setIsRecording(true);
-                // FIX: Use window.setInterval to ensure the browser's implementation is used, which returns a number.
                 timerRef.current = window.setInterval(() => {
                     setDuration(prev => prev + 1);
                 }, 1000);
 
             } catch (err) {
                 console.error("Error accessing microphone:", err);
-                // FIX: Pass the error to the onCancel callback to satisfy the function signature that expects an argument.
                 onCancel(err);
             }
         };
@@ -54,7 +50,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onStop, onCancel }) => {
         startRecording();
         
         return () => {
-             // FIX: Use window.clearInterval for browser compatibility.
              if (timerRef.current) window.clearInterval(timerRef.current);
              if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
                  mediaRecorderRef.current.stop();
@@ -66,7 +61,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onStop, onCancel }) => {
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
             mediaRecorderRef.current.stop();
             setIsRecording(false);
-            // FIX: Use window.clearInterval for browser compatibility.
             if(timerRef.current) window.clearInterval(timerRef.current);
         }
     };

@@ -1,7 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
-// FIX: Changed props to extend from motion.button's props to resolve type conflicts.
 interface GlassButtonProps extends Omit<React.ComponentProps<typeof motion.button>, 'children'> {
   children: React.ReactNode;
   className?: string;

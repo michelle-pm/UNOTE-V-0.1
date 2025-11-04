@@ -298,13 +298,11 @@ const Dashboard: React.FC<DashboardProps> = ({
             projectUsers={projectUsers}
             currentUser={currentUser}
             currentUserRole={currentUserRole}
-// FIX: Corrected typo from isProjectTeam to isTeamProject to match the Project type.
             isTeamProject={project.isTeamProject}
             onToggleCommentPane={onToggleCommentPane}
         />;
       default:
         return <div>Unknown widget type</div>;
-// FIX: The dependency array for this useCallback was incomplete. Replaced project.isTeamProject with the whole project object to prevent stale closures.
   }, [onUpdateWidgetData, onRemoveWidget, onCopyWidget, onInitiateAddWidget, onChildrenLayoutChange, onDragStart, onDragStop, onResizeStop, setDraggingWidgetId, isAnythingDragging, isMobile, projectUsers, currentUser, currentUserRole, project, onToggleFolder, onToggleCommentPane]);
   
   const processedLayouts = useMemo(() => {

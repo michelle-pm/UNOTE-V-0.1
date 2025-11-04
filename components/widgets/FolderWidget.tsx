@@ -28,7 +28,6 @@ interface FolderWidgetProps {
   projectUsers: User[];
   currentUser: User | null;
   currentUserRole: ProjectMemberRole | 'owner' | null;
-  // FIX: Corrected typo from isProjectTeam to isTeamProject to match the Project type and prop passed from Dashboard.
   isTeamProject: boolean;
   onToggleCommentPane: (widgetId: string | null) => void;
 }
