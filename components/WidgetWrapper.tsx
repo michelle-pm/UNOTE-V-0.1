@@ -28,7 +28,6 @@ interface WidgetWrapperProps {
   projectUsers: UserType[];
   isTeamProject: boolean;
   isWidgetEditable: boolean;
-// FIX: Changed type to allow null to match the function signature from Dashboard.
   onToggleCommentPane: (widgetId: string | null) => void;
 }
 

@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-// FIX: Import AnimatePresence from framer-motion.
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { User, Chat } from '../../types';

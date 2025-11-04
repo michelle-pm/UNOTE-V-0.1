@@ -77,29 +77,41 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat
       }
       
       const friendDoc = querySnapshot.docs[0];
-      const friendUser = { uid: friendDoc.id, ...friendDoc.data() } as User;
+      const friendUid = friendDoc.id;
+      const friendUserForState = { uid: friendDoc.id, ...friendDoc.data() } as User;
       
       const currentUserRef = doc(db, "users", user.uid);
-      const friendUserRef = doc(db, "users", friendUser.uid);
+      const friendUserRef = doc(db, "users", friendUid);
 
-      // Create a canonical chat ID
-      const chatId = [user.uid, friendUser.uid].sort().join('_');
+      const chatId = [user.uid, friendUid].sort().join('_');
       const chatRef = doc(db, "chats", chatId);
 
       await runTransaction(db, async (transaction) => {
+        const currentUserDoc = await transaction.get(currentUserRef);
+        const friendUserDoc = await transaction.get(friendUserRef);
         const chatDoc = await transaction.get(chatRef);
-        // 1. Update friends lists
-        transaction.update(currentUserRef, { friends_uids: arrayUnion(friendUser.uid) });
+
+        if (!currentUserDoc.exists() || !friendUserDoc.exists()) {
+          throw new Error("Один из пользователей не найден в базе данных.");
+        }
+        
+        const currentUserData = currentUserDoc.data();
+        const friendUserData = friendUserDoc.data();
+
+        if (!currentUserData?.name || !currentUserData?.email || !friendUserData?.name || !friendUserData?.email) {
+            throw new Error("У одного из пользователей неполные данные профиля.");
+        }
+        
+        transaction.update(currentUserRef, { friends_uids: arrayUnion(friendUid) });
         transaction.update(friendUserRef, { friends_uids: arrayUnion(user.uid) });
 
-        // 2. Create a chat if it doesn't exist
         if (!chatDoc.exists()) {
             const newChatData = {
-                type: 'private',
-                participants: [user.uid, friendUser.uid],
+                type: 'private' as const,
+                participants: [user.uid, friendUid],
                 participantInfo: {
-                    [user.uid]: { name: user.name, email: user.email },
-                    [friendUser.uid]: { name: friendUser.name, email: friendUser.email }
+                    [user.uid]: { name: currentUserData.name, email: currentUserData.email },
+                    [friendUid]: { name: friendUserData.name, email: friendUserData.email }
                 },
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
@@ -110,11 +122,15 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat
 
       setSuccess(`Пользователь ${emailToAdd} добавлен в друзья.`);
       setInviteEmail('');
-      setFriends(prev => [...prev, friendUser]);
+      setFriends(prev => [...prev, friendUserForState]);
 
     } catch (err) {
       console.error("Error adding friend:", err);
-      setError("Произошла ошибка при добавлении друга.");
+      if (err instanceof Error && (err.message.includes("Один из пользователей") || err.message.includes("неполные данные"))) {
+        setError(err.message);
+      } else {
+        setError("Ошибка. Проверьте права доступа Firestore.");
+      }
     }
   };
 
