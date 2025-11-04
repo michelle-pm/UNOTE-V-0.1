@@ -26,7 +26,7 @@ export default defineConfig({
       transformMixedEsModules: true,
     },
     rollupOptions: {
-      external: [],
-    },
+  external: ["firebase", "firebase/auth", "firebase/firestore", "firebase/storage"],
+},
   },
 });
