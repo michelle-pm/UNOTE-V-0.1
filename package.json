@@ -22,7 +22,7 @@
     "react-grid-layout": "^1.5.2",
     "recharts": "^3.3.0",
     "typescript": "^5.4.5",
-    "uuid": "^13.0.0",
+    "uuid": "^9.0.8",
     "vite": "^5.3.1"
   },
   "devDependencies": {}

@@ -304,8 +304,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         />;
       default:
         return <div>Unknown widget type</div>;
-// FIX: The dependency array for this useCallback was incomplete. Added all missing dependencies to prevent stale closures, which can cause subtle and hard-to-debug issues like the one reported.
-  }, [onUpdateWidgetData, onRemoveWidget, onCopyWidget, onInitiateAddWidget, onChildrenLayoutChange, onDragStart, onDragStop, onResizeStop, setDraggingWidgetId, isAnythingDragging, isMobile, projectUsers, currentUser, currentUserRole, project.isTeamProject, onToggleFolder, onToggleCommentPane]);
+// FIX: The dependency array for this useCallback was incomplete. Replaced project.isTeamProject with the whole project object to prevent stale closures.
+  }, [onUpdateWidgetData, onRemoveWidget, onCopyWidget, onInitiateAddWidget, onChildrenLayoutChange, onDragStart, onDragStop, onResizeStop, setDraggingWidgetId, isAnythingDragging, isMobile, projectUsers, currentUser, currentUserRole, project, onToggleFolder, onToggleCommentPane]);
   
   const processedLayouts = useMemo(() => {
     const newLayouts = JSON.parse(JSON.stringify(layouts));

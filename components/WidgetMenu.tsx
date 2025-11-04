@@ -40,7 +40,7 @@ const menuVariants: Variants = {
   }
 };
 
-const gridContainerVariants = {
+const gridContainerVariants: Variants = {
   visible: {
     transition: {
       staggerChildren: 0.03, // Faster stagger
