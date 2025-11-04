@@ -1,10 +1,8 @@
-// ⚠️ DO NOT EDIT: Fix for Vite + Firebase build on Vercel.
-// ⚠️ Не редактировать — обеспечивает стабильную сборку Firebase на Vercel.
-
+// vite.config.ts
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Vite build fix for Firebase modular SDK (auth/firestore/storage)
+// ✅ Полный фикс для Firebase (Auth + Firestore + Storage) на Vercel
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -16,17 +14,27 @@ export default defineConfig({
       "firebase/auth",
       "firebase/firestore",
       "firebase/storage",
+      "firebase/functions",
+      "firebase/analytics",
+      "firebase/messaging"
     ],
-    esbuildOptions: {
-      target: "esnext",
-    },
   },
   build: {
+    rollupOptions: {
+      // 👇 добавляем все модули Firebase, чтобы Rollup не жаловался
+      external: [
+        "firebase",
+        "firebase/app",
+        "firebase/auth",
+        "firebase/firestore",
+        "firebase/storage",
+        "firebase/functions",
+        "firebase/analytics",
+        "firebase/messaging"
+      ],
+    },
     commonjsOptions: {
       transformMixedEsModules: true,
     },
-    rollupOptions: {
-  external: ["firebase", "firebase/auth", "firebase/firestore", "firebase/storage"],
-},
   },
 });
