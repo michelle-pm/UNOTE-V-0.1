@@ -25,9 +25,3 @@
   },
   "devDependencies": {}
 }
-{
-  "buildCommand": "npm install && npm run build",
-  "framework": "vite",
-  "ignoreCommand": "false",
-  "outputDirectory": "dist"
-}

@@ -195,8 +195,7 @@ const App: React.FC = () => {
     try {
         const cleaned = cleanProjectForSerialization(project);
         return JSON.parse(JSON.stringify(cleaned));
-    // FIX: Corrected a syntax error in the catch block.
-    } catch (error) {
+    } catch (error: any) {
         console.error("Failed to deep clone project state:", error);
         return null;
     }
