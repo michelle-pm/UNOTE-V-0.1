@@ -9,7 +9,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@types/uuid": "^9.0.8",
     "@vitejs/plugin-react": "^4.3.1",
     "firebase": "^12.5.0",
     "framer-motion": "^12.23.24",
@@ -20,7 +19,7 @@
     "react-grid-layout": "^1.5.2",
     "recharts": "^3.3.0",
     "typescript": "^5.4.5",
-    "uuid": "^9.0.8",
+    "uuid": "^9.0.1",
     "vite": "^5.3.1"
   },
   "devDependencies": {}
