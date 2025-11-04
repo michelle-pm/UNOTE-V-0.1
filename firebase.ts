@@ -1,5 +1,4 @@
-// FIX: The namespace import was incorrect for the modular SDK. Switched to named imports.
-import { initializeApp, getApps, getApp } from "firebase/app";
+import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
@@ -14,9 +13,9 @@ const firebaseConfig = {
   measurementId: "G-ZFMT67J8L3"
 };
 
-// FIX: Prevent re-initializing Firebase in hot-reload environments and use direct function calls as required by the modular Firebase SDK.
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+export default app;

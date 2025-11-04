@@ -16,5 +16,11 @@ export default defineConfig({
     rollupOptions: {
       external: [],
     },
+    commonjsOptions: {
+      transformMixedEsModules: true,
+    },
+  },
+  resolve: {
+    dedupe: ["firebase"],
   },
 })
