@@ -62,8 +62,8 @@ const Header: React.FC<HeaderProps> = ({
   }
 
   return (
-    <header className="sticky top-0 flex-shrink-0 flex items-center justify-between h-16 px-4 z-20 bg-transparent backdrop-blur-xl border-b border-glass-border text-text-light">
-      <div className="flex items-center gap-2 text-text-dark">
+    <header className="sticky top-0 flex-shrink-0 flex items-center justify-between h-16 px-4 z-20 bg-black/20 backdrop-blur-xl border-b border-glass-border text-text-light">
+      <div className="flex items-center gap-2">
         <motion.button 
           whileTap={{ scale: 0.9 }}
           onClick={onToggleSidebar} 
@@ -72,7 +72,7 @@ const Header: React.FC<HeaderProps> = ({
         >
           <Menu size={20} />
         </motion.button>
-        <h1 className="text-lg font-bold truncate">{title}</h1>
+        <h1 className="text-lg font-bold truncate text-shadow">{title}</h1>
          <motion.button
           whileTap={{ scale: 0.9 }}
           onClick={onUndo}

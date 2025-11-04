@@ -120,7 +120,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         <div
             className="absolute inset-0 w-full h-full rounded-3xl -z-10"
             style={{
-                backgroundColor: isNested ? 'rgba(30, 41, 59, 0.5)' : 'rgba(30, 41, 59, 0.4)',
+                backgroundColor: isNested ? 'rgba(30, 41, 59, 0.25)' : 'rgba(30, 41, 59, 0.2)',
                 border: `1px solid ${isNested ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.15)'}`,
                 backdropFilter: 'blur(32px)',
             }}
@@ -150,7 +150,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
                       />
                     ) : (
                       <div className="flex items-center gap-1 min-w-0">
-                        <h3 className={`font-semibold truncate select-none transition-all duration-300 ${isFolder && folderData?.isCollapsed ? 'text-lg text-text-light' : 'text-base text-text-light/80'}`}>{widget.data.title}</h3>
+                        <h3 className={`font-semibold truncate select-none transition-all duration-300 text-shadow ${isFolder && folderData?.isCollapsed ? 'text-lg text-text-light' : 'text-base text-text-light'}`}>{widget.data.title}</h3>
                         {isWidgetEditable && (
                            <button onClick={() => setIsEditingTitle(true)} className={`no-drag p-1 rounded-full text-text-secondary/60 hover:text-text-light transition-opacity flex-shrink-0 ${isControlsVisible ? 'opacity-100' : 'opacity-0'}`}>
                              <Edit3 size={12} />
