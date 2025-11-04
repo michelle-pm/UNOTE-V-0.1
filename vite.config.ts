@@ -1,8 +1,6 @@
-// vite.config.ts
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// ✅ Полный фикс для Firebase (Auth + Firestore + Storage) на Vercel
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -21,7 +19,6 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      // 👇 добавляем все модули Firebase, чтобы Rollup не жаловался
       external: [
         "firebase",
         "firebase/app",
