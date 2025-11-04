@@ -20,11 +20,11 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: {
-      "@firebase/app": "firebase/app",
-      "@firebase/auth": "firebase/auth",
-      "@firebase/firestore": "firebase/firestore",
-      "@firebase/storage": "firebase/storage",
-    },
+    dedupe: [
+      "firebase/app",
+      "firebase/auth",
+      "firebase/firestore",
+      "firebase/storage",
+    ],
   },
 });
