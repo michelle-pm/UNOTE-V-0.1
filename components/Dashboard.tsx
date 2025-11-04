@@ -303,6 +303,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         />;
       default:
         return <div>Unknown widget type</div>;
+    }
   }, [onUpdateWidgetData, onRemoveWidget, onCopyWidget, onInitiateAddWidget, onChildrenLayoutChange, onDragStart, onDragStop, onResizeStop, setDraggingWidgetId, isAnythingDragging, isMobile, projectUsers, currentUser, currentUserRole, project, onToggleFolder, onToggleCommentPane]);
   
   const processedLayouts = useMemo(() => {
