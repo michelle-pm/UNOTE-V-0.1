@@ -8,7 +8,6 @@ export interface User {
   uid: string;
   name: string;
   email: string;
-  friends_uids?: string[];
 }
 
 // Widget Types Enum
@@ -201,6 +200,18 @@ export interface Comment {
   createdAt: Timestamp;
   mentions: string[]; // array of UIDs
 }
+
+// Friend Request Interface
+export interface FriendRequest {
+  id: string;
+  fromUid: string;
+  fromName: string;
+  fromEmail: string;
+  toUid: string;
+  status: 'pending'; // Only pending requests are stored
+  createdAt: Timestamp;
+}
+
 
 // Messaging Interfaces
 export enum MessageType {

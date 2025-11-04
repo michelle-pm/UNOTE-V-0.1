@@ -173,9 +173,10 @@ const App: React.FC = () => {
     'lastSeenWidgetCommentTimestamps', {}, user?.uid
   );
 
-  // Messaging State
+  // Messaging and Friends State
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
+  const [hasPendingRequests, setHasPendingRequests] = useState(false);
 
   useEffect(() => {
       const bgElement = document.getElementById('app-bg-image');
@@ -283,24 +284,42 @@ const App: React.FC = () => {
       }
   }, [scrollToWidgetId, activeProject?.widgets]);
   
-    // Fetch user's chats
+    // Fetch user's chats and friend requests
     useEffect(() => {
         if (!user?.uid) {
             setChats([]);
+            setHasPendingRequests(false);
             return;
         }
-        const q = query(
+
+        // Fetch chats
+        const chatsQuery = query(
             collection(db, "chats"), 
             where("participants", "array-contains", user.uid),
             orderBy("updatedAt", "desc")
         );
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const unsubscribeChats = onSnapshot(chatsQuery, (snapshot) => {
             const chatsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat));
             setChats(chatsData);
         }, (error) => {
             console.error("Error fetching chats:", error);
         });
-        return () => unsubscribe();
+
+        // Fetch friend requests for notifications
+        const requestsQuery = query(
+            collection(db, "friend_requests"), 
+            where("toUid", "==", user.uid)
+        );
+        const unsubscribeRequests = onSnapshot(requestsQuery, (snapshot) => {
+            setHasPendingRequests(!snapshot.empty);
+        }, (error) => {
+            console.error("Error fetching friend requests:", error);
+        });
+
+        return () => {
+            unsubscribeChats();
+            unsubscribeRequests();
+        };
     }, [user?.uid]);
     
     const handleSelectChat = useCallback((chatOrUserId: string) => {
@@ -1033,6 +1052,7 @@ const App: React.FC = () => {
               onUpdateGradients={handleUpdateGradients}
               projectColors={projectColors}
               onToggleFriendsModal={() => setIsFriendsModalOpen(prev => !prev)}
+              hasPendingRequests={hasPendingRequests}
               onToggleMessagesModal={() => setIsMessagesModalOpen(prev => !prev)}
               projectUsers={projectUsers}
               ownerUid={activeProject.owner_uid}

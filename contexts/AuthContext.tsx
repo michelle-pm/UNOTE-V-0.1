@@ -40,8 +40,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 setUser({ uid: firebaseUser.uid, ...userDoc.data() } as User);
             } else {
                  // This might happen if Firestore doc creation failed after auth creation
-                const newUser: User = { uid: firebaseUser.uid, name: firebaseUser.displayName || 'Пользователь', email: firebaseUser.email!, friends_uids: [] };
-                await setDoc(userDocRef, { name: newUser.name, email: newUser.email, friends_uids: [] });
+                const newUser: User = { uid: firebaseUser.uid, name: firebaseUser.displayName || 'Пользователь', email: firebaseUser.email! };
+                await setDoc(userDocRef, { name: newUser.name, email: newUser.email });
                 setUser(newUser);
             }
         } else {
@@ -65,7 +65,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     await updateProfile(firebaseUser, { displayName: name });
     
-    const newUser: Omit<User, 'uid'> = { name, email, friends_uids: [] };
+    const newUser: Omit<User, 'uid'> = { name, email };
     await setDoc(doc(db, "users", firebaseUser.uid), newUser);
     
     // Create a default project for the new user in Firestore

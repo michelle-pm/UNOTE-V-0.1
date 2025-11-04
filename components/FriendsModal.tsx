@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { X, UserPlus, UserX, MessageSquare } from 'lucide-react';
+import { X, UserPlus, UserX, MessageSquare, Check, MailQuestion } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, doc, runTransaction, arrayUnion, arrayRemove, getDoc, serverTimestamp } from 'firebase/firestore';
-import { User, Chat } from '../types';
+import { collection, query, where, getDocs, doc, runTransaction, serverTimestamp, deleteDoc, addDoc, documentId, getDoc } from 'firebase/firestore';
+import { User, FriendRequest } from '../types';
 import GlassButton from './GlassButton';
 
 interface FriendsModalProps {
@@ -15,138 +15,163 @@ interface FriendsModalProps {
 
 const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat }) => {
   const [friends, setFriends] = useState<User[]>([]);
+  const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const fetchFriends = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     if (!user?.uid) return;
+    setIsLoading(true);
+    setError('');
     try {
-      setIsLoading(true);
-      const userDoc = await getDoc(doc(db, "users", user.uid));
-      const currentUids = userDoc.data()?.friends_uids || [];
-      if (currentUids.length === 0) {
-         setFriends([]);
-         setIsLoading(false);
-         return;
+      // Fetch Friends
+      const friendshipsQuery = query(collection(db, "friendships"), where("users", "array-contains", user.uid));
+      const friendshipsSnapshot = await getDocs(friendshipsQuery);
+      const friendUids = friendshipsSnapshot.docs
+        .map(doc => {
+            const users = doc.data().users as string[];
+            return users.find(uid => uid !== user.uid);
+        })
+        .filter((uid): uid is string => !!uid);
+
+      if (friendUids.length > 0) {
+        const q = query(collection(db, "users"), where(documentId(), "in", friendUids.slice(0, 30)));
+        const friendDocs = await getDocs(q);
+        setFriends(friendDocs.docs.map(d => ({ uid: d.id, ...d.data() } as User)));
+      } else {
+        setFriends([]);
       }
       
-      const friendPromises = currentUids.map((uid: string) => getDoc(doc(db, "users", uid)));
-      const friendDocs = await Promise.all(friendPromises);
-      const friendsData = friendDocs
-        .filter(doc => doc.exists())
-        .map(doc => ({ uid: doc.id, ...doc.data() } as User));
-      setFriends(friendsData);
+      // Fetch Friend Requests
+      const requestsQuery = query(collection(db, "friend_requests"), where("toUid", "==", user.uid));
+      const requestsSnapshot = await getDocs(requestsQuery);
+      setRequests(requestsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as FriendRequest)));
+
     } catch (err) {
-      console.error("Error fetching friends:", err);
-      setError("Не удалось загрузить список друзей.");
+      console.error("Error fetching data:", err);
+      setError("Не удалось загрузить данные.");
     } finally {
       setIsLoading(false);
     }
   }, [user.uid]);
 
   useEffect(() => {
-    fetchFriends();
-  }, [fetchFriends]);
+    fetchData();
+  }, [fetchData]);
   
-  const handleAddFriend = async (e: React.FormEvent) => {
+  const handleSendRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccess('');
     const emailToAdd = inviteEmail.trim().toLowerCase();
 
-    if (!emailToAdd) return;
-    if (emailToAdd === user.email) {
-      setError("Вы не можете добавить себя в друзья.");
-      return;
-    }
-    if (friends.some(f => f.email === emailToAdd)) {
-      setError("Этот пользователь уже в друзьях.");
-      return;
-    }
+    if (!emailToAdd || !user.name || !user.email) return;
+    if (emailToAdd === user.email) return setError("Вы не можете добавить себя в друзья.");
+    if (friends.some(f => f.email === emailToAdd)) return setError("Этот пользователь уже в друзьях.");
 
     try {
       const usersRef = collection(db, "users");
       const q = query(usersRef, where("email", "==", emailToAdd));
       const querySnapshot = await getDocs(q);
 
-      if (querySnapshot.empty) {
-        setError("Пользователь с таким email не найден.");
-        return;
-      }
+      if (querySnapshot.empty) return setError("Пользователь с таким email не найден.");
       
       const friendDoc = querySnapshot.docs[0];
       const friendUid = friendDoc.id;
-      const friendUserForState = { uid: friendDoc.id, ...friendDoc.data() } as User;
+
+      const requestsRef = collection(db, "friend_requests");
+      const checkExistingReq1 = query(requestsRef, where("fromUid", "==", user.uid), where("toUid", "==", friendUid));
+      const checkExistingReq2 = query(requestsRef, where("fromUid", "==", friendUid), where("toUid", "==", user.uid));
       
-      const currentUserRef = doc(db, "users", user.uid);
-      const friendUserRef = doc(db, "users", friendUid);
+      const [req1Snap, req2Snap] = await Promise.all([getDocs(checkExistingReq1), getDocs(checkExistingReq2)]);
 
-      const chatId = [user.uid, friendUid].sort().join('_');
-      const chatRef = doc(db, "chats", chatId);
-
-      await runTransaction(db, async (transaction) => {
-        const currentUserDoc = await transaction.get(currentUserRef);
-        const friendUserDoc = await transaction.get(friendUserRef);
-        const chatDoc = await transaction.get(chatRef);
-
-        if (!currentUserDoc.exists() || !friendUserDoc.exists()) {
-          throw new Error("Один из пользователей не найден в базе данных.");
-        }
-        
-        const currentUserData = currentUserDoc.data();
-        const friendUserData = friendUserDoc.data();
-
-        if (!currentUserData?.name || !currentUserData?.email || !friendUserData?.name || !friendUserData?.email) {
-            throw new Error("У одного из пользователей неполные данные профиля.");
-        }
-        
-        transaction.update(currentUserRef, { friends_uids: arrayUnion(friendUid) });
-        transaction.update(friendUserRef, { friends_uids: arrayUnion(user.uid) });
-
-        if (!chatDoc.exists()) {
-            const newChatData = {
-                type: 'private' as const,
-                participants: [user.uid, friendUid],
-                participantInfo: {
-                    [user.uid]: { name: currentUserData.name, email: currentUserData.email },
-                    [friendUid]: { name: friendUserData.name, email: friendUserData.email }
-                },
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-            };
-            transaction.set(chatRef, newChatData);
-        }
+      if (!req1Snap.empty) return setError("Вы уже отправили запрос этому пользователю.");
+      if (!req2Snap.empty) return setError("Этот пользователь уже отправил вам запрос. Проверьте входящие.");
+      
+      await addDoc(requestsRef, {
+        fromUid: user.uid,
+        fromName: user.name,
+        fromEmail: user.email,
+        toUid: friendUid,
+        status: 'pending',
+        createdAt: serverTimestamp(),
       });
 
-      setSuccess(`Пользователь ${emailToAdd} добавлен в друзья.`);
+      setSuccess(`Запрос отправлен пользователю ${emailToAdd}.`);
       setInviteEmail('');
-      setFriends(prev => [...prev, friendUserForState]);
 
     } catch (err) {
-      console.error("Error adding friend:", err);
-      if (err instanceof Error && (err.message.includes("Один из пользователей") || err.message.includes("неполные данные"))) {
-        setError(err.message);
-      } else {
-        setError("Ошибка. Проверьте права доступа Firestore.");
-      }
+      console.error("Error sending request:", err);
+      setError("Произошла ошибка при отправке запроса.");
+    }
+  };
+
+  const handleAcceptRequest = async (request: FriendRequest) => {
+    try {
+      const friendshipId = [request.fromUid, request.toUid].sort().join('_');
+      const friendshipRef = doc(db, "friendships", friendshipId);
+      const chatRef = doc(db, "chats", friendshipId);
+      const requestRef = doc(db, "friend_requests", request.id);
+
+      await runTransaction(db, async (transaction) => {
+        const fromUserDoc = await transaction.get(doc(db, "users", request.fromUid));
+        const toUserDoc = await transaction.get(doc(db, "users", request.toUid));
+
+        if (!fromUserDoc.exists() || !toUserDoc.exists()) {
+          throw new Error("Один из пользователей не найден.");
+        }
+
+        const fromUserData = fromUserDoc.data();
+        const toUserData = toUserDoc.data();
+        
+        transaction.set(friendshipRef, {
+            users: [request.fromUid, request.toUid],
+            createdAt: serverTimestamp(),
+        });
+        
+        transaction.set(chatRef, {
+            type: 'private',
+            participants: [request.fromUid, request.toUid],
+            participantInfo: {
+                [request.fromUid]: { name: fromUserData.name, email: fromUserData.email },
+                [request.toUid]: { name: toUserData.name, email: toUserData.email }
+            },
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+        });
+        
+        transaction.delete(requestRef);
+      });
+      
+      // Update UI state
+      setRequests(prev => prev.filter(r => r.id !== request.id));
+      setFriends(prev => [...prev, { uid: request.fromUid, name: request.fromName, email: request.fromEmail }]);
+      setSuccess("Запрос в друзья принят!");
+
+    } catch(err) {
+      console.error("Error accepting request: ", err);
+      setError("Не удалось принять запрос.");
+    }
+  };
+
+  const handleDeclineRequest = async (requestId: string) => {
+    try {
+      await deleteDoc(doc(db, "friend_requests", requestId));
+      setRequests(prev => prev.filter(r => r.id !== requestId));
+    } catch(err) {
+      console.error("Error declining request: ", err);
+      setError("Не удалось отклонить запрос.");
     }
   };
 
   const handleRemoveFriend = async (friendId: string) => {
-     try {
-      const currentUserRef = doc(db, "users", user.uid);
-      const friendUserRef = doc(db, "users", friendId);
-
-      await runTransaction(db, async (transaction) => {
-        transaction.update(currentUserRef, { friends_uids: arrayRemove(friendId) });
-        transaction.update(friendUserRef, { friends_uids: arrayRemove(user.uid) });
-      });
-
+    try {
+      const friendshipId = [user.uid, friendId].sort().join('_');
+      await deleteDoc(doc(db, "friendships", friendshipId));
       setFriends(prev => prev.filter(f => f.uid !== friendId));
       setSuccess("Пользователь удален из друзей.");
-
     } catch (err) {
       console.error("Error removing friend:", err);
       setError("Произошла ошибка при удалении друга.");
@@ -175,7 +200,7 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat
           </button>
         </div>
 
-        <form onSubmit={handleAddFriend} className="flex items-center gap-2 mb-2 flex-shrink-0">
+        <form onSubmit={handleSendRequest} className="flex items-center gap-2 mb-2 flex-shrink-0">
           <input
             type="email"
             value={inviteEmail}
@@ -197,33 +222,56 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat
         <div className="flex-grow overflow-y-auto pr-2 -mr-2 space-y-2">
           {isLoading ? (
             <p className="text-center text-text-secondary pt-10">Загрузка...</p>
-          ) : friends.length > 0 ? (
-            friends.map(friend => (
-              <div key={friend.uid} className="group flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors">
-                <div className="flex items-center gap-3 overflow-hidden">
-                  <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center font-bold flex-shrink-0">
-                      {friend.name?.[0]?.toUpperCase() || friend.email[0].toUpperCase()}
-                  </div>
-                  <div className="overflow-hidden">
-                      <p className="font-semibold truncate">{friend.name}</p>
-                      <p className="text-xs text-text-secondary truncate">{friend.email}</p>
-                  </div>
-                </div>
-                <div className="flex items-center flex-shrink-0">
-                    <button onClick={() => onSelectChat(friend.uid)} className="p-2 text-text-secondary hover:text-accent rounded-full hover:bg-white/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100">
-                        <MessageSquare size={18} />
-                    </button>
-                    <button onClick={() => handleRemoveFriend(friend.uid)} className="p-2 text-red-500/80 hover:text-red-500 rounded-full hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100">
-                        <UserX size={18} />
-                    </button>
-                </div>
-              </div>
-            ))
           ) : (
-              <div className="flex flex-col items-center justify-center h-full text-center text-text-secondary">
-                 <p className="font-semibold">У вас пока нет друзей.</p>
-                 <p className="text-xs mt-1">Добавьте друзей, чтобы вместе работать над проектами.</p>
-              </div>
+            <>
+              {requests.length > 0 && (
+                <div className="mb-4">
+                  <h3 className="font-semibold text-sm text-text-secondary px-2 mb-2">Запросы в друзья ({requests.length})</h3>
+                  <div className="space-y-2">
+                    {requests.map(req => (
+                      <div key={req.id} className="flex items-center justify-between p-2 rounded-lg bg-white/5">
+                         <div className="flex items-center gap-3 overflow-hidden">
+                            <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center font-bold flex-shrink-0" title={req.fromEmail}>
+                                {req.fromName?.[0]?.toUpperCase()}
+                            </div>
+                            <p className="font-semibold truncate text-sm">{req.fromName}</p>
+                        </div>
+                        <div className="flex items-center flex-shrink-0">
+                            <button onClick={() => handleAcceptRequest(req)} className="p-2 text-green-400 hover:text-green-300 rounded-full hover:bg-green-500/10"><Check size={18} /></button>
+                            <button onClick={() => handleDeclineRequest(req.id)} className="p-2 text-red-500/80 hover:text-red-500 rounded-full hover:bg-red-500/10"><X size={18} /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <hr className="border-glass-border my-4"/>
+                </div>
+              )}
+              {friends.length > 0 ? (
+                friends.map(friend => (
+                  <div key={friend.uid} className="group flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center font-bold flex-shrink-0">
+                          {friend.name?.[0]?.toUpperCase() || friend.email[0].toUpperCase()}
+                      </div>
+                      <div className="overflow-hidden">
+                          <p className="font-semibold truncate">{friend.name}</p>
+                          <p className="text-xs text-text-secondary truncate">{friend.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center flex-shrink-0">
+                        <button onClick={() => onSelectChat(friend.uid)} className="p-2 text-text-secondary hover:text-accent rounded-full hover:bg-white/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"><MessageSquare size={18} /></button>
+                        <button onClick={() => handleRemoveFriend(friend.uid)} className="p-2 text-red-500/80 hover:text-red-500 rounded-full hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"><UserX size={18} /></button>
+                    </div>
+                  </div>
+                ))
+              ) : requests.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center text-text-secondary">
+                     <MailQuestion size={48} className="mb-4 text-text-secondary/50"/>
+                     <p className="font-semibold">У вас пока нет друзей.</p>
+                     <p className="text-xs mt-1">Добавьте друзей по email, чтобы начать общаться.</p>
+                  </div>
+              ) : null}
+            </>
           )}
         </div>
       </motion.div>

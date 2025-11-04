@@ -15,6 +15,7 @@ interface HeaderProps {
   onUpdateGradients: (color1: string, color2: string) => void;
   projectColors: { color1: string; color2: string };
   onToggleFriendsModal: () => void;
+  hasPendingRequests: boolean;
   onToggleMessagesModal: () => void;
   projectUsers: User[];
   ownerUid: string;
@@ -32,7 +33,7 @@ const UserAvatar: React.FC<{ user: User | undefined, isOwner: boolean }> = ({ us
 
 const Header: React.FC<HeaderProps> = ({ 
     title, onToggleSidebar, onAddWidget, showAddWidgetButton, onUndo, canUndo, 
-    onUpdateGradients, projectColors, onToggleFriendsModal, onToggleMessagesModal,
+    onUpdateGradients, projectColors, onToggleFriendsModal, hasPendingRequests, onToggleMessagesModal,
     projectUsers, ownerUid, isTeamProject
 }) => {
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
@@ -114,10 +115,11 @@ const Header: React.FC<HeaderProps> = ({
          <motion.button
           whileTap={{ scale: 0.9 }}
           onClick={onToggleFriendsModal}
-          className="p-2 rounded-full hover:bg-white/10 transition-colors"
+          className="p-2 rounded-full hover:bg-white/10 transition-colors relative"
           aria-label="Friends"
         >
           <Users size={18} />
+          {hasPendingRequests && <div className="absolute top-1 right-1 w-2 h-2 bg-accent rounded-full animate-pulse" />}
         </motion.button>
         
         <div className="flex items-center -space-x-2 ml-2">
