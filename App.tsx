@@ -177,43 +177,6 @@ const App: React.FC = () => {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
   const [hasPendingRequests, setHasPendingRequests] = useState(false);
-  const [allKnownUsers, setAllKnownUsers] = useState<User[]>([]);
-
-  // All users the current user might know (from all their projects)
-  const allProjectParticipantUids = useMemo(() => {
-    const uids = new Set<string>();
-    projects.forEach(p => {
-        p.participant_uids.forEach(uid => uids.add(uid));
-    });
-    return Array.from(uids);
-  }, [projects]);
-
-  useEffect(() => {
-    if (allProjectParticipantUids.length === 0) {
-        setAllKnownUsers([]);
-        return;
-    }
-    
-    const fetchAllKnownUsers = async () => {
-        const uids = allProjectParticipantUids;
-        const chunks: string[][] = [];
-        for (let i = 0; i < uids.length; i += 30) {
-            chunks.push(uids.slice(i, i + 30));
-        }
-        try {
-            const userPromises = chunks.map(chunk => 
-                getDocs(query(collection(db, "users"), where(documentId(), "in", chunk)))
-            );
-            const userSnapshots = await Promise.all(userPromises);
-            const usersData = userSnapshots.flatMap(snapshot => 
-                snapshot.docs.filter(d => d.exists()).map(d => ({ uid: d.id, ...d.data() } as User))
-            );
-            setAllKnownUsers(usersData);
-        } catch (e) { console.error("Error fetching all known users:", e); setAllKnownUsers([]); }
-    };
-    fetchAllKnownUsers();
-  }, [allProjectParticipantUids]);
-
 
   useEffect(() => {
       const bgElement = document.getElementById('app-bg-image');
@@ -1164,7 +1127,6 @@ const App: React.FC = () => {
               user={user}
               onClose={() => setIsFriendsModalOpen(false)}
               onSelectChat={handleSelectChat}
-              allKnownUsers={allKnownUsers}
             />
           )}
         </AnimatePresence>

@@ -11,10 +11,9 @@ interface FriendsModalProps {
   user: User;
   onClose: () => void;
   onSelectChat: (userId: string) => void;
-  allKnownUsers: User[];
 }
 
-const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat, allKnownUsers }) => {
+const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat }) => {
   const [friends, setFriends] = useState<User[]>([]);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -82,10 +81,15 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat
     setError('');
 
     try {
-        const foundUser = allKnownUsers.find(u => u.email.toLowerCase() === emailToSearch);
-        if (!foundUser) {
+        const usersRef = collection(db, "users");
+        const q = query(usersRef, where("email", "==", emailToSearch));
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.empty) {
             setSearchResult('not_found');
         } else {
+            const userDoc = querySnapshot.docs[0];
+            const foundUser = { uid: userDoc.id, ...userDoc.data() } as User;
             setSearchResult(foundUser);
         }
     } catch (err) {
