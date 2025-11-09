@@ -210,6 +210,7 @@ export interface FriendRequest {
   to: string;
   status: 'pending' | 'accepted' | 'rejected';
   createdAt: Timestamp;
+  acceptedAt?: Timestamp;
 }
 
 

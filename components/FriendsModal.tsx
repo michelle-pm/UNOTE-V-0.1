@@ -105,20 +105,23 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, friends, requests, on
         // Create friendship document
         transaction.set(friendshipRef, { users: [request.from, request.to], createdAt: serverTimestamp() });
         
-        // Create chat document
-        transaction.set(chatRef, {
-            type: 'private',
-            participants: [request.from, request.to],
-            participantInfo: {
-                [request.from]: { name: fromUserData.name, email: fromUserData.email },
-                [request.to]: { name: toUserData.name, email: toUserData.email }
-            },
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-        });
+        // Create chat document only if it doesn't exist
+        const chatSnap = await transaction.get(chatRef);
+        if (!chatSnap.exists()) {
+            transaction.set(chatRef, {
+                type: 'private',
+                participants: [request.from, request.to],
+                participantInfo: {
+                    [request.from]: { name: fromUserData.name, email: fromUserData.email },
+                    [request.to]: { name: toUserData.name, email: toUserData.email }
+                },
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            });
+        }
 
-        // Update request status instead of deleting
-        transaction.update(requestRef, { status: "accepted" });
+        // Update request status with acceptedAt timestamp
+        transaction.update(requestRef, { status: "accepted", acceptedAt: serverTimestamp() });
       });
       
       setSuccess("Запрос в друзья принят!");
