@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, UserPlus, UserX, MessageSquare, Check, MailQuestion, Search, Loader2 } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, doc, runTransaction, serverTimestamp, deleteDoc, addDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, runTransaction, serverTimestamp, deleteDoc, addDoc, updateDoc, getDoc } from 'firebase/firestore';
 import { User, FriendRequest } from '../types';
 import GlassButton from './GlassButton';
 
@@ -90,45 +90,61 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, friends, requests, on
 
   const handleAcceptRequest = async (request: FriendRequest) => {
     try {
-      const friendshipId = [request.from, request.to].sort().join('_');
-      const friendshipRef = doc(db, "friendships", friendshipId);
-      const chatRef = doc(db, "chats", friendshipId);
-      const requestRef = doc(db, "friend_requests", request.id);
-
       await runTransaction(db, async (transaction) => {
-        const fromUserDoc = await transaction.get(doc(db, "users", request.from));
-        const toUserDoc = await transaction.get(doc(db, "users", request.to));
+        // 1. Get the request and user documents
+        const requestRef = doc(db, "friend_requests", request.id);
+        const requestSnap = await transaction.get(requestRef);
+        if (!requestSnap.exists()) throw new Error("Запрос в друзья не найден.");
+        
+        const requestData = requestSnap.data();
+        const fromUid = requestData.from;
+        const toUid = requestData.to;
+
+        // Verify current user is the recipient
+        if (toUid !== user.uid) throw new Error("Permission denied to accept this request.");
+
+        const fromUserDoc = await transaction.get(doc(db, "users", fromUid));
+        const toUserDoc = await transaction.get(doc(db, "users", toUid));
+
         if (!fromUserDoc.exists() || !toUserDoc.exists()) throw new Error("Один из пользователей не найден.");
+
         const fromUserData = fromUserDoc.data();
         const toUserData = toUserDoc.data();
+
+        // 2. Create bidirectional friendship documents
+        const friendshipRef1 = doc(db, "friendships", `${fromUid}_${toUid}`);
+        const friendshipRef2 = doc(db, "friendships", `${toUid}_${fromUid}`);
+
+        transaction.set(friendshipRef1, { users: [fromUid, toUid], createdAt: serverTimestamp() });
+        transaction.set(friendshipRef2, { users: [toUid, fromUid], createdAt: serverTimestamp() });
         
-        // Create friendship document
-        transaction.set(friendshipRef, { users: [request.from, request.to], createdAt: serverTimestamp() });
-        
-        // Create chat document only if it doesn't exist
+        // 3. Create chat document only if it doesn't exist
+        const chatId = [fromUid, toUid].sort().join('_');
+        const chatRef = doc(db, "chats", chatId);
         const chatSnap = await transaction.get(chatRef);
+        
         if (!chatSnap.exists()) {
             transaction.set(chatRef, {
                 type: 'private',
-                participants: [request.from, request.to],
+                participants: [fromUid, toUid],
                 participantInfo: {
-                    [request.from]: { name: fromUserData.name, email: fromUserData.email },
-                    [request.to]: { name: toUserData.name, email: toUserData.email }
+                    [fromUid]: { name: fromUserData.name, email: fromUserData.email },
+                    [toUid]: { name: toUserData.name, email: toUserData.email }
                 },
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             });
         }
 
-        // Update request status with acceptedAt timestamp
+        // 4. Update request status
         transaction.update(requestRef, { status: "accepted", acceptedAt: serverTimestamp() });
       });
       
       setSuccess("Запрос в друзья принят!");
 
-    } catch(err) {
-      console.error("Error accepting request: ", err);
-      setError("Не удалось принять запрос.");
+    } catch(err: any) {
+      console.error("Error accepting friend request:", err);
+      setError(err.message || "Не удалось принять запрос.");
     }
   };
 
@@ -141,8 +157,18 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, friends, requests, on
 
   const handleRemoveFriend = async (friendId: string) => {
     try {
-      const friendshipId = [user.uid, friendId].sort().join('_');
-      await deleteDoc(doc(db, "friendships", friendshipId));
+      // Need to delete both friendship documents
+      const friendshipId1 = `${user.uid}_${friendId}`;
+      const friendshipId2 = `${friendId}_${user.uid}`;
+      
+      const batch = runTransaction(db, async (transaction) => {
+        const friendRef1 = doc(db, "friendships", friendshipId1);
+        const friendRef2 = doc(db, "friendships", friendshipId2);
+        transaction.delete(friendRef1);
+        transaction.delete(friendRef2);
+      });
+
+      await batch;
       setSuccess("Пользователь удален из друзей.");
     } catch (err) { console.error("Error removing friend:", err); setError("Произошла ошибка при удалении друга."); }
   }
