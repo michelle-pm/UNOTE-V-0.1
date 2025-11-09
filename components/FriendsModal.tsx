@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, UserPlus, UserX, MessageSquare, Check, MailQuestion, Search, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, doc, runTransaction, serverTimestamp, deleteDoc, addDoc, documentId } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, runTransaction, serverTimestamp, deleteDoc, addDoc, documentId, onSnapshot } from 'firebase/firestore';
 import { User, FriendRequest } from '../types';
 import GlassButton from './GlassButton';
 
@@ -23,53 +23,80 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const fetchData = useCallback(async () => {
-    if (!user?.uid) return;
-    setIsLoading(true);
-    try {
-      // Fetch Friends
-      const friendshipsQuery = query(collection(db, "friendships"), where("users", "array-contains", user.uid));
-      const friendshipsSnapshot = await getDocs(friendshipsQuery);
-      const friendUids = friendshipsSnapshot.docs
-        .map(doc => {
-            const users = doc.data().users as string[];
-            return users.find(uid => uid !== user.uid);
-        })
-        .filter((uid): uid is string => !!uid);
-
-      if (friendUids.length > 0) {
-        const chunks: string[][] = [];
-        for (let i = 0; i < friendUids.length; i += 30) {
-          chunks.push(friendUids.slice(i, i + 30));
-        }
-        const friendPromises = chunks.map(chunk => 
-            getDocs(query(collection(db, "users"), where(documentId(), "in", chunk)))
-        );
-        const friendSnapshots = await Promise.all(friendPromises);
-        const friendsData = friendSnapshots.flatMap(snapshot => 
-            snapshot.docs.map(d => ({ uid: d.id, ...d.data() } as User))
-        );
-        setFriends(friendsData);
-      } else {
-        setFriends([]);
-      }
-      
-      // Fetch Friend Requests
-      const requestsQuery = query(collection(db, "friend_requests"), where("toUid", "==", user.uid));
-      const requestsSnapshot = await getDocs(requestsQuery);
-      setRequests(requestsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as FriendRequest)));
-
-    } catch (err) {
-      console.error("Error fetching data:", err);
-      setError("Не удалось загрузить данные.");
-    } finally {
+  useEffect(() => {
+    if (!user?.uid) {
       setIsLoading(false);
+      return;
     }
+    setIsLoading(true);
+    let friendDataLoaded = false;
+    let requestDataLoaded = false;
+
+    const checkLoadingDone = () => {
+        if (friendDataLoaded && requestDataLoaded) {
+            setIsLoading(false);
+        }
+    }
+
+    // Listener for Friend Requests
+    const requestsQuery = query(collection(db, "friend_requests"), where("toUid", "==", user.uid));
+    const unsubscribeRequests = onSnapshot(requestsQuery, (snapshot) => {
+        setRequests(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as FriendRequest)));
+        requestDataLoaded = true;
+        checkLoadingDone();
+    }, (err) => {
+        console.warn("Could not fetch friend requests (permission error likely):", err.message);
+        setRequests([]);
+        requestDataLoaded = true;
+        checkLoadingDone();
+    });
+
+    // Listener for Friendships
+    const friendshipsQuery = query(collection(db, "friendships"), where("users", "array-contains", user.uid));
+    const unsubscribeFriendships = onSnapshot(friendshipsQuery, async (friendshipsSnapshot) => {
+        const friendUids = friendshipsSnapshot.docs
+            .map(doc => {
+                const users = doc.data().users as string[];
+                return users.find(uid => uid !== user.uid);
+            })
+            .filter((uid): uid is string => !!uid);
+
+        if (friendUids.length > 0) {
+            try {
+                 const chunks: string[][] = [];
+                 for (let i = 0; i < friendUids.length; i += 30) {
+                   chunks.push(friendUids.slice(i, i + 30));
+                 }
+                 const friendPromises = chunks.map(chunk => 
+                     getDocs(query(collection(db, "users"), where(documentId(), "in", chunk)))
+                 );
+                 const friendSnapshots = await Promise.all(friendPromises);
+                 const friendsData = friendSnapshots.flatMap(snapshot => 
+                     snapshot.docs.map(d => ({ uid: d.id, ...d.data() } as User))
+                 );
+                 setFriends(friendsData);
+            } catch (err: any) {
+                 console.warn("Could not fetch friend details (permission error likely):", err.message);
+                 setFriends([]);
+            }
+        } else {
+            setFriends([]);
+        }
+        friendDataLoaded = true;
+        checkLoadingDone();
+    }, (err) => {
+        console.warn("Could not fetch friendships (permission error likely):", err.message);
+        setFriends([]);
+        friendDataLoaded = true;
+        checkLoadingDone();
+    });
+
+    return () => {
+        unsubscribeRequests();
+        unsubscribeFriendships();
+    };
   }, [user.uid]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
 
   const handleSearchUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,32 +135,16 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat
     if (!user.name || !user.email) {
       return setError("Информация о вашем профиле неполная.");
     }
-    if (friend.uid === user.uid) return setError("Вы не можете добавить себя в друзья.");
-    if (friends.some(f => f.uid === friend.uid)) return setError("Этот пользователь уже в друзьях.");
-
+    if (friend.uid === user.uid) {
+        return setError("Вы не можете добавить себя в друзья.");
+    }
+    
+    // Given the restrictive permissions, we will attempt the write operation directly.
+    // Firestore security rules will be the ultimate arbiter of whether this request is valid
+    // (e.g., preventing duplicates or adding existing friends).
+    // This avoids client-side read errors when checking for existing relationships.
     try {
       const requestsRef = collection(db, "friend_requests");
-      
-      // Check if the other user has already sent a request to us. This query should be permitted.
-      const incomingReqQuery = query(requestsRef, where("fromUid", "==", friend.uid), where("toUid", "==", user.uid));
-      const incomingReqSnap = await getDocs(incomingReqQuery);
-      if (!incomingReqSnap.empty) {
-        return setError("Этот пользователь уже отправил вам запрос. Проверьте входящие.");
-      }
-      
-      // Attempt to check if we've already sent a request.
-      // This might fail due to security rules, so we'll handle the error gracefully.
-      try {
-        const outgoingReqQuery = query(requestsRef, where("fromUid", "==", user.uid), where("toUid", "==", friend.uid));
-        const outgoingReqSnap = await getDocs(outgoingReqQuery);
-        if (!outgoingReqSnap.empty) {
-          return setError("Вы уже отправили запрос этому пользователю.");
-        }
-      } catch (queryError) {
-        console.warn("Не удалось проверить исходящие запросы в друзья (возможно, из-за правил Firestore). Запрос будет отправлен.", queryError);
-        // We proceed without this check if it fails. The worst case is a duplicate request.
-      }
-      
       await addDoc(requestsRef, {
         fromUid: user.uid,
         fromName: user.name,
@@ -146,11 +157,16 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat
       setSuccess(`Запрос отправлен пользователю ${friend.email}.`);
       setSearchResult(null);
       setSearchEmail('');
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error sending request:", err);
-      setError("Произошла ошибка при отправке запроса.");
+      if (err.code === 'permission-denied') {
+          setError("Ошибка прав доступа. Не удалось отправить запрос.");
+      } else {
+          setError("Произошла ошибка при отправке запроса.");
+      }
     }
   };
+
 
   const handleAcceptRequest = async (request: FriendRequest) => {
     try {
@@ -180,8 +196,6 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat
         transaction.delete(requestRef);
       });
       
-      setRequests(prev => prev.filter(r => r.id !== request.id));
-      setFriends(prev => [...prev, { uid: request.fromUid, name: request.fromName, email: request.fromEmail }]);
       setSuccess("Запрос в друзья принят!");
 
     } catch(err) {
@@ -193,7 +207,6 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat
   const handleDeclineRequest = async (requestId: string) => {
     try {
       await deleteDoc(doc(db, "friend_requests", requestId));
-      setRequests(prev => prev.filter(r => r.id !== requestId));
     } catch(err) { console.error("Error declining request: ", err); setError("Не удалось отклонить запрос."); }
   };
 
@@ -201,7 +214,6 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat
     try {
       const friendshipId = [user.uid, friendId].sort().join('_');
       await deleteDoc(doc(db, "friendships", friendshipId));
-      setFriends(prev => prev.filter(f => f.uid !== friendId));
       setSuccess("Пользователь удален из друзей.");
     } catch (err) { console.error("Error removing friend:", err); setError("Произошла ошибка при удалении друга."); }
   }
