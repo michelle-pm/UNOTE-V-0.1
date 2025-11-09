@@ -11,6 +11,7 @@ import { db } from './firebase';
 import { Widget, WidgetType, Project, WidgetData, FolderData, User, LineData, PlanData, PieData, Comment, Chat, FriendRequest } from './types';
 import useLocalStorage from './hooks/useLocalStorage';
 import useIncomingFriendRequests from './hooks/useIncomingFriendRequests';
+import { useFriendNotifications } from './hooks/useFriendNotifications';
 import { WIDGET_DEFAULTS } from './constants';
 import { getRandomGradient } from './utils/colors';
 import { getRandomEmoji } from './utils/emojis';
@@ -101,6 +102,7 @@ const cleanProjectForSerialization = (project: Project): Project => {
 
 const App: React.FC = () => {
   const { isAuthenticated, user, logout } = useAuth();
+  useFriendNotifications(user);
   
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);

@@ -20,7 +20,8 @@ const useIncomingFriendRequests = (user: User | null) => {
 
     const q = query(
       collection(db, "friend_requests"),
-      where("toUid", "==", user.uid)
+      where("to", "==", user.uid),
+      where("status", "==", "pending")
     );
 
     const unsubscribe = onSnapshot(q, 

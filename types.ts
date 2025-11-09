@@ -204,11 +204,11 @@ export interface Comment {
 // Friend Request Interface
 export interface FriendRequest {
   id: string;
-  fromUid: string;
+  from: string;
   fromName: string;
   fromEmail: string;
-  toUid: string;
-  status: 'pending'; // Only pending requests are stored
+  to: string;
+  status: 'pending' | 'accepted' | 'rejected';
   createdAt: Timestamp;
 }
 

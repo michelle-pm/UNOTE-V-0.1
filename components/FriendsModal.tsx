@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, UserPlus, UserX, MessageSquare, Check, MailQuestion, Search, Loader2 } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, doc, runTransaction, serverTimestamp, deleteDoc, addDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, runTransaction, serverTimestamp, deleteDoc, addDoc, updateDoc } from 'firebase/firestore';
 import { User, FriendRequest } from '../types';
 import GlassButton from './GlassButton';
 
@@ -63,17 +63,13 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, friends, requests, on
         return setError("Вы не можете добавить себя в друзья.");
     }
     
-    // Given the restrictive permissions, we will attempt the write operation directly.
-    // Firestore security rules will be the ultimate arbiter of whether this request is valid
-    // (e.g., preventing duplicates or adding existing friends).
-    // This avoids client-side read errors when checking for existing relationships.
     try {
       const requestsRef = collection(db, "friend_requests");
       await addDoc(requestsRef, {
-        fromUid: user.uid,
+        from: user.uid,
         fromName: user.name,
         fromEmail: user.email,
-        toUid: friend.uid,
+        to: friend.uid,
         status: 'pending',
         createdAt: serverTimestamp(),
       });
@@ -94,30 +90,35 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, friends, requests, on
 
   const handleAcceptRequest = async (request: FriendRequest) => {
     try {
-      const friendshipId = [request.fromUid, request.toUid].sort().join('_');
+      const friendshipId = [request.from, request.to].sort().join('_');
       const friendshipRef = doc(db, "friendships", friendshipId);
       const chatRef = doc(db, "chats", friendshipId);
       const requestRef = doc(db, "friend_requests", request.id);
 
       await runTransaction(db, async (transaction) => {
-        const fromUserDoc = await transaction.get(doc(db, "users", request.fromUid));
-        const toUserDoc = await transaction.get(doc(db, "users", request.toUid));
+        const fromUserDoc = await transaction.get(doc(db, "users", request.from));
+        const toUserDoc = await transaction.get(doc(db, "users", request.to));
         if (!fromUserDoc.exists() || !toUserDoc.exists()) throw new Error("Один из пользователей не найден.");
         const fromUserData = fromUserDoc.data();
         const toUserData = toUserDoc.data();
         
-        transaction.set(friendshipRef, { users: [request.fromUid, request.toUid], createdAt: serverTimestamp() });
+        // Create friendship document
+        transaction.set(friendshipRef, { users: [request.from, request.to], createdAt: serverTimestamp() });
+        
+        // Create chat document
         transaction.set(chatRef, {
             type: 'private',
-            participants: [request.fromUid, request.toUid],
+            participants: [request.from, request.to],
             participantInfo: {
-                [request.fromUid]: { name: fromUserData.name, email: fromUserData.email },
-                [request.toUid]: { name: toUserData.name, email: toUserData.email }
+                [request.from]: { name: fromUserData.name, email: fromUserData.email },
+                [request.to]: { name: toUserData.name, email: toUserData.email }
             },
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
         });
-        transaction.delete(requestRef);
+
+        // Update request status instead of deleting
+        transaction.update(requestRef, { status: "accepted" });
       });
       
       setSuccess("Запрос в друзья принят!");
@@ -130,7 +131,8 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, friends, requests, on
 
   const handleDeclineRequest = async (requestId: string) => {
     try {
-      await deleteDoc(doc(db, "friend_requests", requestId));
+      const requestRef = doc(db, "friend_requests", requestId);
+      await updateDoc(requestRef, { status: 'rejected' });
     } catch(err) { console.error("Error declining request: ", err); setError("Не удалось отклонить запрос."); }
   };
 
