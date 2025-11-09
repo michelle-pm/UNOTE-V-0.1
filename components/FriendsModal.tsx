@@ -105,19 +105,34 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat
     setError('');
     setSuccess('');
 
-    if (!user.name || !user.email) return;
+    if (!user.name || !user.email) {
+      return setError("Информация о вашем профиле неполная.");
+    }
     if (friend.uid === user.uid) return setError("Вы не можете добавить себя в друзья.");
     if (friends.some(f => f.uid === friend.uid)) return setError("Этот пользователь уже в друзьях.");
 
     try {
       const requestsRef = collection(db, "friend_requests");
-      const checkExistingReq1 = query(requestsRef, where("fromUid", "==", user.uid), where("toUid", "==", friend.uid));
-      const checkExistingReq2 = query(requestsRef, where("fromUid", "==", friend.uid), where("toUid", "==", user.uid));
       
-      const [req1Snap, req2Snap] = await Promise.all([getDocs(checkExistingReq1), getDocs(checkExistingReq2)]);
-
-      if (!req1Snap.empty) return setError("Вы уже отправили запрос этому пользователю.");
-      if (!req2Snap.empty) return setError("Этот пользователь уже отправил вам запрос. Проверьте входящие.");
+      // Check if the other user has already sent a request to us. This query should be permitted.
+      const incomingReqQuery = query(requestsRef, where("fromUid", "==", friend.uid), where("toUid", "==", user.uid));
+      const incomingReqSnap = await getDocs(incomingReqQuery);
+      if (!incomingReqSnap.empty) {
+        return setError("Этот пользователь уже отправил вам запрос. Проверьте входящие.");
+      }
+      
+      // Attempt to check if we've already sent a request.
+      // This might fail due to security rules, so we'll handle the error gracefully.
+      try {
+        const outgoingReqQuery = query(requestsRef, where("fromUid", "==", user.uid), where("toUid", "==", friend.uid));
+        const outgoingReqSnap = await getDocs(outgoingReqQuery);
+        if (!outgoingReqSnap.empty) {
+          return setError("Вы уже отправили запрос этому пользователю.");
+        }
+      } catch (queryError) {
+        console.warn("Не удалось проверить исходящие запросы в друзья (возможно, из-за правил Firestore). Запрос будет отправлен.", queryError);
+        // We proceed without this check if it fails. The worst case is a duplicate request.
+      }
       
       await addDoc(requestsRef, {
         fromUid: user.uid,
