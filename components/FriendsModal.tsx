@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, UserPlus, UserX, MessageSquare, Check, MailQuestion, Search, Loader2 } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, doc, runTransaction, serverTimestamp, deleteDoc, addDoc, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, runTransaction, serverTimestamp, addDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { User, FriendRequest } from '../types';
 import GlassButton from './GlassButton';
 
@@ -91,52 +91,58 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, friends, requests, on
   const handleAcceptRequest = async (request: FriendRequest) => {
     try {
       await runTransaction(db, async (transaction) => {
-        // 1. Get the request and user documents
+        // --- ALL READS FIRST ---
         const requestRef = doc(db, "friend_requests", request.id);
-        const requestSnap = await transaction.get(requestRef);
-        if (!requestSnap.exists()) throw new Error("Запрос в друзья не найден.");
-        
-        const requestData = requestSnap.data();
-        const fromUid = requestData.from;
-        const toUid = requestData.to;
-
-        // Verify current user is the recipient
-        if (toUid !== user.uid) throw new Error("Permission denied to accept this request.");
-
-        const fromUserDoc = await transaction.get(doc(db, "users", fromUid));
-        const toUserDoc = await transaction.get(doc(db, "users", toUid));
-
-        if (!fromUserDoc.exists() || !toUserDoc.exists()) throw new Error("Один из пользователей не найден.");
-
-        const fromUserData = fromUserDoc.data();
-        const toUserData = toUserDoc.data();
-
-        // 2. Create bidirectional friendship documents
-        const friendshipRef1 = doc(db, "friendships", `${fromUid}_${toUid}`);
-        const friendshipRef2 = doc(db, "friendships", `${toUid}_${fromUid}`);
-
-        transaction.set(friendshipRef1, { users: [fromUid, toUid], createdAt: serverTimestamp() });
-        transaction.set(friendshipRef2, { users: [toUid, fromUid], createdAt: serverTimestamp() });
-        
-        // 3. Create chat document only if it doesn't exist
-        const chatId = [fromUid, toUid].sort().join('_');
+        const fromUserRef = doc(db, "users", request.from);
+        const toUserRef = doc(db, "users", request.to);
+        const chatId = [request.from, request.to].sort().join('_');
         const chatRef = doc(db, "chats", chatId);
-        const chatSnap = await transaction.get(chatRef);
+
+        // Perform all reads concurrently for efficiency
+        const [requestSnap, fromUserSnap, toUserSnap, chatSnap] = await Promise.all([
+            transaction.get(requestRef),
+            transaction.get(fromUserRef),
+            transaction.get(toUserRef),
+            transaction.get(chatRef)
+        ]);
+
+        // --- VALIDATION ---
+        if (!requestSnap.exists()) {
+            throw new Error("Запрос в друзья не найден.");
+        }
+        const requestData = requestSnap.data();
+        if (requestData.to !== user.uid) {
+            throw new Error("Permission denied to accept this request.");
+        }
+        if (!fromUserSnap.exists() || !toUserSnap.exists()) {
+            throw new Error("Один из пользователей не найден.");
+        }
         
+        const fromUserData = fromUserSnap.data();
+        const toUserData = toUserSnap.data();
+
+        // --- ALL WRITES LAST ---
+        // 1. Create bidirectional friendship documents
+        const friendshipRef1 = doc(db, "friendships", `${request.from}_${request.to}`);
+        const friendshipRef2 = doc(db, "friendships", `${request.to}_${request.from}`);
+        transaction.set(friendshipRef1, { users: [request.from, request.to], createdAt: serverTimestamp() });
+        transaction.set(friendshipRef2, { users: [request.to, request.from], createdAt: serverTimestamp() });
+        
+        // 2. Create chat document only if it doesn't exist
         if (!chatSnap.exists()) {
             transaction.set(chatRef, {
                 type: 'private',
-                participants: [fromUid, toUid],
+                participants: [request.from, request.to],
                 participantInfo: {
-                    [fromUid]: { name: fromUserData.name, email: fromUserData.email },
-                    [toUid]: { name: toUserData.name, email: toUserData.email }
+                    [request.from]: { name: fromUserData.name, email: fromUserData.email },
+                    [request.to]: { name: toUserData.name, email: toUserData.email }
                 },
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             });
         }
 
-        // 4. Update request status
+        // 3. Update request status
         transaction.update(requestRef, { status: "accepted", acceptedAt: serverTimestamp() });
       });
       
@@ -157,20 +163,24 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, friends, requests, on
 
   const handleRemoveFriend = async (friendId: string) => {
     try {
-      // Need to delete both friendship documents
       const friendshipId1 = `${user.uid}_${friendId}`;
       const friendshipId2 = `${friendId}_${user.uid}`;
       
-      const batch = runTransaction(db, async (transaction) => {
-        const friendRef1 = doc(db, "friendships", friendshipId1);
-        const friendRef2 = doc(db, "friendships", friendshipId2);
-        transaction.delete(friendRef1);
-        transaction.delete(friendRef2);
-      });
+      const batch = writeBatch(db);
+      
+      const friendRef1 = doc(db, "friendships", friendshipId1);
+      const friendRef2 = doc(db, "friendships", friendshipId2);
+      
+      batch.delete(friendRef1);
+      batch.delete(friendRef2);
 
-      await batch;
+      await batch.commit();
+
       setSuccess("Пользователь удален из друзей.");
-    } catch (err) { console.error("Error removing friend:", err); setError("Произошла ошибка при удалении друга."); }
+    } catch (err) { 
+        console.error("Error removing friend:", err); 
+        setError("Произошла ошибка при удалении друга."); 
+    }
   }
 
   return (
