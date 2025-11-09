@@ -11,9 +11,10 @@ interface FriendsModalProps {
   user: User;
   onClose: () => void;
   onSelectChat: (userId: string) => void;
+  allKnownUsers: User[];
 }
 
-const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat }) => {
+const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat, allKnownUsers }) => {
   const [friends, setFriends] = useState<User[]>([]);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -38,9 +39,18 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat
         .filter((uid): uid is string => !!uid);
 
       if (friendUids.length > 0) {
-        const q = query(collection(db, "users"), where(documentId(), "in", friendUids.slice(0, 30)));
-        const friendDocs = await getDocs(q);
-        setFriends(friendDocs.docs.map(d => ({ uid: d.id, ...d.data() } as User)));
+        const chunks: string[][] = [];
+        for (let i = 0; i < friendUids.length; i += 30) {
+          chunks.push(friendUids.slice(i, i + 30));
+        }
+        const friendPromises = chunks.map(chunk => 
+            getDocs(query(collection(db, "users"), where(documentId(), "in", chunk)))
+        );
+        const friendSnapshots = await Promise.all(friendPromises);
+        const friendsData = friendSnapshots.flatMap(snapshot => 
+            snapshot.docs.map(d => ({ uid: d.id, ...d.data() } as User))
+        );
+        setFriends(friendsData);
       } else {
         setFriends([]);
       }
@@ -72,19 +82,15 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat
     setError('');
 
     try {
-        const usersRef = collection(db, "users");
-        const q = query(usersRef, where("email", "==", emailToSearch));
-        const querySnapshot = await getDocs(q);
-
-        if (querySnapshot.empty) {
+        const foundUser = allKnownUsers.find(u => u.email.toLowerCase() === emailToSearch);
+        if (!foundUser) {
             setSearchResult('not_found');
         } else {
-            const foundUser = { uid: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() } as User;
             setSearchResult(foundUser);
         }
     } catch (err) {
         console.error("Error searching user:", err);
-        setError("Ошибка. Проверьте права доступа Firestore.");
+        setError("Произошла ошибка при поиске.");
         setSearchResult(null);
     } finally {
         setIsSearching(false);
