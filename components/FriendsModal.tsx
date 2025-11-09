@@ -1,101 +1,25 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, UserPlus, UserX, MessageSquare, Check, MailQuestion, Search, Loader2 } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, doc, runTransaction, serverTimestamp, deleteDoc, addDoc, documentId, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, runTransaction, serverTimestamp, deleteDoc, addDoc } from 'firebase/firestore';
 import { User, FriendRequest } from '../types';
 import GlassButton from './GlassButton';
 
 interface FriendsModalProps {
   user: User;
+  friends: User[];
+  requests: FriendRequest[];
   onClose: () => void;
   onSelectChat: (userId: string) => void;
 }
 
-const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat }) => {
-  const [friends, setFriends] = useState<User[]>([]);
-  const [requests, setRequests] = useState<FriendRequest[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+const FriendsModal: React.FC<FriendsModalProps> = ({ user, friends, requests, onClose, onSelectChat }) => {
   const [searchEmail, setSearchEmail] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResult, setSearchResult] = useState<User | 'not_found' | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-
-  useEffect(() => {
-    if (!user?.uid) {
-      setIsLoading(false);
-      return;
-    }
-    setIsLoading(true);
-    let friendDataLoaded = false;
-    let requestDataLoaded = false;
-
-    const checkLoadingDone = () => {
-        if (friendDataLoaded && requestDataLoaded) {
-            setIsLoading(false);
-        }
-    }
-
-    // Listener for Friend Requests
-    const requestsQuery = query(collection(db, "friend_requests"), where("toUid", "==", user.uid));
-    const unsubscribeRequests = onSnapshot(requestsQuery, (snapshot) => {
-        setRequests(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as FriendRequest)));
-        requestDataLoaded = true;
-        checkLoadingDone();
-    }, (err) => {
-        console.warn("Could not fetch friend requests (permission error likely):", err.message);
-        setRequests([]);
-        requestDataLoaded = true;
-        checkLoadingDone();
-    });
-
-    // Listener for Friendships
-    const friendshipsQuery = query(collection(db, "friendships"), where("users", "array-contains", user.uid));
-    const unsubscribeFriendships = onSnapshot(friendshipsQuery, async (friendshipsSnapshot) => {
-        const friendUids = friendshipsSnapshot.docs
-            .map(doc => {
-                const users = doc.data().users as string[];
-                return users.find(uid => uid !== user.uid);
-            })
-            .filter((uid): uid is string => !!uid);
-
-        if (friendUids.length > 0) {
-            try {
-                 const chunks: string[][] = [];
-                 for (let i = 0; i < friendUids.length; i += 30) {
-                   chunks.push(friendUids.slice(i, i + 30));
-                 }
-                 const friendPromises = chunks.map(chunk => 
-                     getDocs(query(collection(db, "users"), where(documentId(), "in", chunk)))
-                 );
-                 const friendSnapshots = await Promise.all(friendPromises);
-                 const friendsData = friendSnapshots.flatMap(snapshot => 
-                     snapshot.docs.map(d => ({ uid: d.id, ...d.data() } as User))
-                 );
-                 setFriends(friendsData);
-            } catch (err: any) {
-                 console.warn("Could not fetch friend details (permission error likely):", err.message);
-                 setFriends([]);
-            }
-        } else {
-            setFriends([]);
-        }
-        friendDataLoaded = true;
-        checkLoadingDone();
-    }, (err) => {
-        console.warn("Could not fetch friendships (permission error likely):", err.message);
-        setFriends([]);
-        friendDataLoaded = true;
-        checkLoadingDone();
-    });
-
-    return () => {
-        unsubscribeRequests();
-        unsubscribeFriendships();
-    };
-  }, [user.uid]);
 
 
   const handleSearchUser = async (e: React.FormEvent) => {
@@ -265,7 +189,6 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat
         </div>
 
         <div className="flex-grow overflow-y-auto pr-2 -mr-2 space-y-2">
-          {isLoading ? ( <p className="text-center text-text-secondary pt-10">Загрузка...</p> ) : (
             <>
               {requests.length > 0 && (
                 <div className="mb-4">
@@ -311,7 +234,6 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, onClose, onSelectChat
                   </div>
               ) : null}
             </>
-          )}
         </div>
       </motion.div>
     </>

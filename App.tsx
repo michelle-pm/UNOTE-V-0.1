@@ -8,8 +8,9 @@ import { collection, query, where, onSnapshot, doc, addDoc, updateDoc, deleteDoc
 import { db } from './firebase';
 
 
-import { Widget, WidgetType, Project, WidgetData, FolderData, User, LineData, PlanData, PieData, Comment, Chat } from './types';
+import { Widget, WidgetType, Project, WidgetData, FolderData, User, LineData, PlanData, PieData, Comment, Chat, FriendRequest } from './types';
 import useLocalStorage from './hooks/useLocalStorage';
+import useIncomingFriendRequests from './hooks/useIncomingFriendRequests';
 import { WIDGET_DEFAULTS } from './constants';
 import { getRandomGradient } from './utils/colors';
 import { getRandomEmoji } from './utils/emojis';
@@ -175,8 +176,10 @@ const App: React.FC = () => {
 
   // Messaging and Friends State
   const [chats, setChats] = useState<Chat[]>([]);
+  const [friends, setFriends] = useState<User[]>([]);
+  const { requests: friendRequests } = useIncomingFriendRequests(user);
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
-  const [hasPendingRequests, setHasPendingRequests] = useState(false);
+  const hasPendingRequests = friendRequests.length > 0;
 
   useEffect(() => {
       const bgElement = document.getElementById('app-bg-image');
@@ -290,15 +293,15 @@ const App: React.FC = () => {
       }
   }, [scrollToWidgetId, activeProject?.widgets]);
   
-    // Fetch user's chats and friend requests
+    // Fetch user's social data (chats, friends)
     useEffect(() => {
         if (!user?.uid) {
             setChats([]);
-            setHasPendingRequests(false);
+            setFriends([]);
             return;
         }
 
-        // Fetch chats
+        // Listener for Chats
         const chatsQuery = query(
             collection(db, "chats"), 
             where("participants", "array-contains", user.uid),
@@ -307,24 +310,41 @@ const App: React.FC = () => {
         const unsubscribeChats = onSnapshot(chatsQuery, (snapshot) => {
             const chatsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat));
             setChats(chatsData);
-        }, (error) => {
-            console.error("Error fetching chats:", error);
+        }, (error) => console.error("Error fetching chats:", error));
+
+        // Listener for Friendships
+        const friendshipsQuery = query(collection(db, "friendships"), where("users", "array-contains", user.uid));
+        const unsubscribeFriendships = onSnapshot(friendshipsQuery, async (snapshot) => {
+            const friendUids = snapshot.docs
+                .map(doc => (doc.data().users as string[]).find(uid => uid !== user.uid))
+                .filter((uid): uid is string => !!uid);
+
+            if (friendUids.length > 0) {
+                try {
+                    const chunks: string[][] = [];
+                    for (let i = 0; i < friendUids.length; i += 30) { chunks.push(friendUids.slice(i, i + 30)); }
+                    
+                    const friendSnapshots = await Promise.all(
+                        chunks.map(chunk => getDocs(query(collection(db, "users"), where(documentId(), "in", chunk))))
+                    );
+                    
+                    setFriends(friendSnapshots.flatMap(s => s.docs.map(d => ({ uid: d.id, ...d.data() } as User))));
+                } catch (err: any) {
+                    console.warn("Could not fetch friend details:", err.message);
+                    setFriends([]);
+                }
+            } else {
+                setFriends([]);
+            }
+        }, (err) => {
+            console.warn("Could not fetch friendships:", err.message);
+            setFriends([]);
         });
 
-        // Fetch friend requests for notifications
-        const requestsQuery = query(
-            collection(db, "friend_requests"), 
-            where("toUid", "==", user.uid)
-        );
-        const unsubscribeRequests = onSnapshot(requestsQuery, (snapshot) => {
-            setHasPendingRequests(!snapshot.empty);
-        }, (error) => {
-            console.error("Error fetching friend requests:", error);
-        });
 
         return () => {
             unsubscribeChats();
-            unsubscribeRequests();
+            unsubscribeFriendships();
         };
     }, [user?.uid]);
     
@@ -1125,6 +1145,8 @@ const App: React.FC = () => {
           {isFriendsModalOpen && user && (
             <FriendsModal
               user={user}
+              friends={friends}
+              requests={friendRequests}
               onClose={() => setIsFriendsModalOpen(false)}
               onSelectChat={handleSelectChat}
             />
