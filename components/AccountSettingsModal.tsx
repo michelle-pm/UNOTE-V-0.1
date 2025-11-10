@@ -11,7 +11,7 @@ interface AccountSettingsModalProps {
 
 const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onClose, activeProjectName }) => {
   const { user, updateUser, changePassword } = useAuth();
-  const [name, setName] = useState(user?.name || '');
+  const [name, setName] = useState(user?.displayName || '');
   const [isSaved, setIsSaved] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState('');
@@ -23,8 +23,8 @@ const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onClose, ac
 
   const handleNameSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (user && name.trim() !== user.name) {
-      updateUser({ name: name.trim() });
+    if (user && name.trim() !== user.displayName) {
+      updateUser({ displayName: name.trim() });
     }
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);

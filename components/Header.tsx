@@ -25,9 +25,9 @@ interface HeaderProps {
 const UserAvatar: React.FC<{ user: User | undefined, isOwner: boolean }> = ({ user, isOwner }) => (
     <div 
         className={`w-7 h-7 rounded-full bg-accent text-accent-text flex items-center justify-center font-bold text-xs select-none border-2 ${isOwner ? 'border-accent-dark' : 'border-transparent'}`}
-        title={`${user?.name} ${isOwner ? '(Владелец)' : ''}`}
+        title={`${user?.displayName} ${isOwner ? '(Владелец)' : ''}`}
     >
-        {user?.name?.[0]?.toUpperCase() || '?'}
+        {user?.displayName?.[0]?.toUpperCase() || '?'}
     </div>
 );
 

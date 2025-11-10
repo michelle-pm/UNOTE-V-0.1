@@ -40,8 +40,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 setUser({ uid: firebaseUser.uid, ...userDoc.data() } as User);
             } else {
                  // This might happen if Firestore doc creation failed after auth creation
-                const newUser: User = { uid: firebaseUser.uid, name: firebaseUser.displayName || 'Пользователь', email: firebaseUser.email! };
-                await setDoc(userDocRef, { name: newUser.name, email: newUser.email });
+                const newUser: User = { uid: firebaseUser.uid, displayName: firebaseUser.displayName || 'Пользователь', email: firebaseUser.email! };
+                await setDoc(userDocRef, { displayName: newUser.displayName, email: newUser.email });
                 setUser(newUser);
             }
         } else {
@@ -65,7 +65,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     await updateProfile(firebaseUser, { displayName: name });
     
-    const newUser: Omit<User, 'uid'> = { name, email };
+    const newUser: Omit<User, 'uid'> = { displayName: name, email };
     await setDoc(doc(db, "users", firebaseUser.uid), newUser);
     
     // Create a default project for the new user in Firestore
@@ -84,13 +84,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const updateUser = async (updatedUser: Partial<User>) => {
     if (auth.currentUser) {
-        if (updatedUser.name) {
-            await updateProfile(auth.currentUser, { displayName: updatedUser.name });
+        if (updatedUser.displayName) {
+            await updateProfile(auth.currentUser, { displayName: updatedUser.displayName });
             const userDocRef = doc(db, "users", auth.currentUser.uid);
-            await setDoc(userDocRef, { name: updatedUser.name }, { merge: true });
+            await setDoc(userDocRef, { displayName: updatedUser.displayName }, { merge: true });
             
             // Update local state
-            setUser(prev => prev ? { ...prev, name: updatedUser.name! } : null);
+            setUser(prev => prev ? { ...prev, displayName: updatedUser.displayName! } : null);
         }
     }
   };

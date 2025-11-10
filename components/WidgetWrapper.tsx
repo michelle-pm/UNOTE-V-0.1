@@ -9,8 +9,8 @@ import { UnreadStatusContext } from './Dashboard';
 export const WidgetSizeContext = createContext({ width: 0, height: 0 });
 
 const UserAvatar: React.FC<{ user: UserType | undefined }> = ({ user }) => (
-    <div className="w-5 h-5 rounded-full bg-accent text-accent-text flex items-center justify-center font-bold text-xs select-none" title={`Назначено: ${user?.name}`}>
-        {user?.name?.[0]?.toUpperCase() || '?'}
+    <div className="w-5 h-5 rounded-full bg-accent text-accent-text flex items-center justify-center font-bold text-xs select-none" title={`Назначено: ${user?.displayName}`}>
+        {user?.displayName?.[0]?.toUpperCase() || '?'}
     </div>
 );
 
@@ -193,7 +193,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
                                                 <div className="pl-2 pr-2 py-1 space-y-1 max-h-48 overflow-y-auto">
                                                     {projectUsers.map(u => (
                                                         <button key={u.uid} onClick={() => handleAssignUser(u.uid)} className={`w-full text-left px-2 py-1.5 text-sm rounded-md hover:bg-white/5 ${widget.assignedUser === u.uid ? 'bg-white/10' : ''}`}>
-                                                            {u.name}
+                                                            {u.displayName}
                                                         </button>
                                                     ))}
                                                 </div>

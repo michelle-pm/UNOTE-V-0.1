@@ -138,7 +138,7 @@ const ShareModal: React.FC<ShareModalProps> = ({ project, projectUsers, onClose 
                             <Crown size={16} className="text-accent" />
                         </div>
                         <div>
-                            <p className="font-semibold">{owner.name}</p>
+                            <p className="font-semibold">{owner.displayName}</p>
                             <p className="text-xs text-text-secondary">{owner.email}</p>
                         </div>
                     </div>
@@ -151,10 +151,10 @@ const ShareModal: React.FC<ShareModalProps> = ({ project, projectUsers, onClose 
               <div key={user.uid} className="flex items-center justify-between p-2 rounded-lg hover:bg-white/5">
                 <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center font-bold">
-                        {user.name?.[0]?.toUpperCase() || user.email[0].toUpperCase()}
+                        {user.displayName?.[0]?.toUpperCase() || user.email[0].toUpperCase()}
                     </div>
                     <div>
-                        <p className="font-semibold">{user.name}</p>
+                        <p className="font-semibold">{user.displayName}</p>
                         <p className="text-xs text-text-secondary">{user.email}</p>
                     </div>
                 </div>

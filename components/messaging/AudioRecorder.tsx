@@ -13,7 +13,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onStop, onCancel }) => {
     const [duration, setDuration] = useState(0);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
-    // FIX: The generic version of `useRef` requires an initial value. Providing `undefined` to fix the "Expected 1 arguments, but got 0" error.
     const timerRef = useRef<number | undefined>(undefined);
     const audioRef = useRef<HTMLAudioElement>(null);
 

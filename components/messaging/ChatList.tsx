@@ -66,7 +66,7 @@ const CreateGroupChat: React.FC<{ currentUser: User; allUsers: User[]; onClose: 
         const participantInfo = allUsers
             .filter(u => selectedUids.includes(u.uid))
             .reduce((acc, user) => {
-                acc[user.uid] = { name: user.name, email: user.email };
+                acc[user.uid] = { name: user.displayName, email: user.email };
                 return acc;
             }, {} as { [uid: string]: { name: string, email: string }});
 
@@ -109,7 +109,7 @@ const CreateGroupChat: React.FC<{ currentUser: User; allUsers: User[]; onClose: 
                 {potentialMembers.map(user => (
                     <button key={user.uid} onClick={() => toggleMember(user.uid)} className={`w-full flex items-center gap-2 p-2 rounded-md transition-colors ${selectedUids.includes(user.uid) ? 'bg-accent/30' : 'hover:bg-white/5'}`}>
                         <div className={`w-5 h-5 rounded-full border-2 ${selectedUids.includes(user.uid) ? 'bg-accent border-accent-dark' : 'border-gray-500'}`} />
-                        <span className="text-sm">{user.name}</span>
+                        <span className="text-sm">{user.displayName}</span>
                     </button>
                 ))}
             </div>

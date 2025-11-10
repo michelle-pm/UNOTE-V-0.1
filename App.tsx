@@ -1,16 +1,20 @@
+
+
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Layout } from 'react-grid-layout';
 import { v4 as uuidv4 } from 'uuid';
 import html2canvas from 'html2canvas';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Plus } from 'lucide-react';
-import { collection, query, where, onSnapshot, doc, addDoc, updateDoc, deleteDoc, getDoc, writeBatch, getDocs, orderBy, serverTimestamp, runTransaction, arrayUnion, documentId } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, addDoc, updateDoc, deleteDoc, getDoc, writeBatch, getDocs, orderBy, serverTimestamp, runTransaction, documentId } from 'firebase/firestore';
 import { db } from './firebase';
 
 
-import { Widget, WidgetType, Project, WidgetData, FolderData, User, LineData, PlanData, PieData, Comment, Chat, FriendRequest } from './types';
+import { Widget, WidgetType, Project, WidgetData, FolderData, User, LineData, PlanData, PieData, Comment, Chat, FriendRequest, Friend } from './types';
 import useLocalStorage from './hooks/useLocalStorage';
-import useIncomingFriendRequests from './hooks/useIncomingFriendRequests';
+import { useFriends } from './hooks/useFriends';
+import { useFriendRequests } from './hooks/useFriendRequests';
 import { useFriendNotifications } from './hooks/useFriendNotifications';
 import { WIDGET_DEFAULTS } from './constants';
 import { getRandomGradient } from './utils/colors';
@@ -107,7 +111,7 @@ const App: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [initialProjectsLoadDone, setInitialProjectsLoadDone] = useState(false);
-  const [activeProjectId, setActiveProjectId] = useLocalStorage<string | null>('activeProjectId', null, user?.uid);
+  const [activeProjectId, setActiveProjectId] = useLocalStorage<string | null>('activeProjectId', user?.uid);
   
   // Effect 1: Fetch projects based on user ID
   useEffect(() => {
@@ -165,7 +169,7 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<{ projectId: string; projectState: Project }[]>([]);
   const [scrollToWidgetId, setScrollToWidgetId] = useState<string | null>(null);
   
-  const [bgImage, setBgImage] = useLocalStorage<string | null>('bgImage', null, user?.uid);
+  const [bgImage, setBgImage] = useLocalStorage<string | null>('bgImage', user?.uid);
   const [bgBlur, setBgBlur] = useLocalStorage<number>('bgBlur', 0, user?.uid);
 
   // Comments State
@@ -176,11 +180,19 @@ const App: React.FC = () => {
     'lastSeenWidgetCommentTimestamps', {}, user?.uid
   );
 
-  // Messaging and Friends State
+  // --- REFACTORED: Messaging and Friends State using Hooks ---
   const [chats, setChats] = useState<Chat[]>([]);
-  const [friends, setFriends] = useState<User[]>([]);
-  const { requests: friendRequests } = useIncomingFriendRequests(user);
+  const [friendDetails, setFriendDetails] = useState<User[]>([]);
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
+  
+  const currentUserId = user ? user.uid : null;
+  const { friends, loadingFriends, friendsError } = useFriends(db, currentUserId);
+  const { friendRequests, loadingRequests, requestsError } = useFriendRequests(db, currentUserId);
+
+  const [isAcceptingRequest, setIsAcceptingRequest] = useState<Record<string, boolean>>({});
+  const [acceptRequestError, setAcceptRequestError] = useState<string | null>(null);
+  const [acceptRequestSuccess, setAcceptRequestSuccess] = useState<string | null>(null);
+
   const hasPendingRequests = friendRequests.length > 0;
 
   useEffect(() => {
@@ -247,11 +259,17 @@ const App: React.FC = () => {
         return;
     }
     const fetchUsers = async () => {
-        const uids = activeProject.participant_uids;
+        // Fix for: Type 'unknown[]' is not assignable to type 'string[]'.
+        // Safely filter participant_uids to ensure it's a valid array of strings,
+        // which prevents type errors when chunking the array for Firestore queries.
+        const uids = (Array.isArray(activeProject.participant_uids) ? activeProject.participant_uids : [])
+            .filter((uid): uid is string => typeof uid === 'string' && uid.length > 0);
+
         if (uids.length === 0) {
             setProjectUsers([]);
             return;
         }
+        
         // Firestore 'in' query is limited to 30 elements
         const chunks: string[][] = [];
         for (let i = 0; i < uids.length; i += 30) {
@@ -299,10 +317,10 @@ const App: React.FC = () => {
     useEffect(() => {
         if (!user?.uid) {
             setChats([]);
-            setFriends([]);
+            setFriendDetails([]);
             return;
         }
-
+        
         // Listener for Chats
         const chatsQuery = query(
             collection(db, "chats"), 
@@ -314,42 +332,48 @@ const App: React.FC = () => {
             setChats(chatsData);
         }, (error) => console.error("Error fetching chats:", error));
 
-        // Listener for Friendships
-        const friendshipsQuery = query(collection(db, "friendships"), where("users", "array-contains", user.uid));
-        const unsubscribeFriendships = onSnapshot(friendshipsQuery, async (snapshot) => {
-            const friendUids = snapshot.docs
-                .map(doc => (doc.data().users as string[]).find(uid => uid !== user.uid))
-                .filter((uid): uid is string => !!uid);
-
-            if (friendUids.length > 0) {
-                try {
-                    const chunks: string[][] = [];
-                    for (let i = 0; i < friendUids.length; i += 30) { chunks.push(friendUids.slice(i, i + 30)); }
-                    
-                    const friendSnapshots = await Promise.all(
-                        chunks.map(chunk => getDocs(query(collection(db, "users"), where(documentId(), "in", chunk))))
-                    );
-                    
-                    setFriends(friendSnapshots.flatMap(s => s.docs.map(d => ({ uid: d.id, ...d.data() } as User))));
-                } catch (err: any) {
-                    console.warn("Could not fetch friend details:", err.message);
-                    setFriends([]);
-                }
-            } else {
-                setFriends([]);
-            }
-        }, (err) => {
-            console.warn("Could not fetch friendships:", err.message);
-            setFriends([]);
-        });
-
-
         return () => {
             unsubscribeChats();
-            unsubscribeFriendships();
         };
     }, [user?.uid]);
     
+    // Effect to fetch user details for friends from the useFriends hook
+    useEffect(() => {
+        if (!user?.uid || friends.length === 0) {
+            setFriendDetails([]);
+            return;
+        }
+
+        const friendUids = friends.map(f => f.participant1 === user.uid ? f.participant2 : f.participant1);
+        const uniqueFriendUids: string[] = [...new Set(friendUids)];
+
+        if (uniqueFriendUids.length === 0) {
+            setFriendDetails([]);
+            return;
+        }
+
+        const chunks: string[][] = [];
+        for (let i = 0; i < uniqueFriendUids.length; i += 30) {
+            chunks.push(uniqueFriendUids.slice(i, i + 30));
+        }
+
+        const fetchFriendUsers = async () => {
+            try {
+                const friendSnapshots = await Promise.all(
+                    chunks.map(chunk => getDocs(query(collection(db, "users"), where(documentId(), "in", chunk))))
+                );
+                const friendsData = friendSnapshots.flatMap(s => s.docs.map(d => ({ uid: d.id, ...d.data() } as User)));
+                setFriendDetails(friendsData);
+            } catch (err: any) {
+                console.warn("Could not fetch friend details:", err.message);
+                setFriendDetails([]);
+            }
+        };
+
+        fetchFriendUsers();
+    }, [friends, user?.uid]);
+
+
     const handleSelectChat = useCallback((chatOrUserId: string) => {
         let chat = chats.find(c => c.id === chatOrUserId);
         if (!chat) { // If userId is passed, find the corresponding private chat
@@ -433,7 +457,7 @@ const App: React.FC = () => {
             content,
             mentions,
             authorUid: user.uid,
-            authorName: user.name,
+            authorName: user.displayName,
             createdAt: serverTimestamp(),
         };
         
@@ -663,7 +687,7 @@ const App: React.FC = () => {
         }
         if (widget.type === WidgetType.Line) {
             const lineData = widget.data as LineData;
-            lineData.series.forEach(s => s.data.forEach(point => { if (point.dependency) point.dependency.widgetId = idMap.get(point.dependency.widgetId) || point.dependency.widgetId; }));
+            lineData.series.forEach(s => s.data.forEach(p => { if (p.dependency) p.dependency.widgetId = idMap.get(p.dependency.widgetId) || p.dependency.widgetId; }));
         }
     });
     
@@ -1012,6 +1036,104 @@ const App: React.FC = () => {
     }
     return { color1: '#D9C8FF', color2: '#B092FF' };
   }, [activeProject]);
+  
+  const acceptFriendRequest = async (request: FriendRequest) => {
+    if (!user) {
+        console.error("Пользователь не аутентифицирован.");
+        setAcceptRequestError("Пользователь не аутентифицирован.");
+        return;
+    }
+
+    setIsAcceptingRequest(prev => ({ ...prev, [request.id]: true }));
+    setAcceptRequestError(null);
+    setAcceptRequestSuccess(null);
+
+    const friendRequestRef = doc(db, "friend_requests", request.id);
+
+    try {
+        await runTransaction(db, async (transaction) => {
+            console.log("--- Отладка acceptFriendRequest: Начало транзакции ---");
+            console.log("currentUserId:", user.uid);
+            console.log("requestId:", request.id);
+
+            // --- PHASE 1: READS ---
+            const friendRequestDoc = await transaction.get(friendRequestRef);
+            console.log("friendRequestRef path:", friendRequestRef.path);
+
+            if (!friendRequestDoc.exists()) {
+                throw new Error("Заявка на дружбу не существует или уже была принята.");
+            }
+            const requestData = friendRequestDoc.data() as FriendRequest;
+            console.log("friendRequestDoc data (прочитано):", requestData);
+
+            // Use fresh data from the transaction as the source of truth
+            const senderId = requestData.from;
+            const recipientId = requestData.to;
+
+            const chatRef = doc(db, "chats", [senderId, recipientId].sort().join('_'));
+            const senderUserRef = doc(db, "users", senderId);
+            const recipientUserRef = doc(db, "users", recipientId);
+
+            const chatDoc = await transaction.get(chatRef);
+            const senderUserDoc = await transaction.get(senderUserRef);
+            const recipientUserDoc = await transaction.get(recipientUserRef);
+
+            // --- PHASE 2: VALIDATION & DATA PREP ---
+            if (!senderUserDoc.exists() || !recipientUserDoc.exists()) {
+                throw new Error("Один из пользователей не найден.");
+            }
+            if (user.uid !== recipientId) {
+                throw new Error("Недостаточно разрешений: Вы не являетесь получателем этой заявки.");
+            }
+            
+            const senderUserData = senderUserDoc.data() as User;
+            const recipientUserData = recipientUserDoc.data() as User;
+
+            // --- PHASE 3: WRITES ---
+            // 1. Create friendship document
+            const newFriendDocRef = doc(collection(db, "friends"));
+            const friendDataToSet = {
+                participant1: senderId,
+                participant2: recipientId,
+                status: "accepted",
+                createdAt: serverTimestamp(),
+            };
+            console.log("newFriendDocRef path:", newFriendDocRef.path);
+            console.log("friendDataToSet:", friendDataToSet);
+            transaction.set(newFriendDocRef, friendDataToSet);
+
+            // 2. Create chat document if it doesn't exist
+            if (!chatDoc.exists()) {
+                const chatDataToSet = {
+                    participants: [senderId, recipientId].sort(),
+                    type: 'private',
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                    participantInfo: {
+                        [senderId]: { name: senderUserData.displayName, email: senderUserData.email },
+                        [recipientId]: { name: recipientUserData.displayName, email: recipientUserData.email } 
+                    },
+                    lastMessage: null,
+                };
+                console.log("newChatRef path:", chatRef.path);
+                console.log("chatDataToSet:", chatDataToSet);
+                transaction.set(chatRef, chatDataToSet);
+            }
+
+            // 3. Delete the friend request
+            console.log("Удаление friendRequestRef:", friendRequestRef.path);
+            transaction.delete(friendRequestRef);
+        });
+
+        console.log("--- Транзакция успешно завершена ---");
+        setAcceptRequestSuccess("Заявка успешно принята!");
+    } catch (error: any) {
+        console.error("Ошибка при принятии заявки на дружбу:", error.message, error);
+        setAcceptRequestError(error.message);
+    } finally {
+        setIsAcceptingRequest(prev => ({ ...prev, [request.id]: false }));
+    }
+};
 
 
   let content;
@@ -1147,10 +1269,18 @@ const App: React.FC = () => {
           {isFriendsModalOpen && user && (
             <FriendsModal
               user={user}
-              friends={friends}
+              friends={friendDetails}
+              loadingFriends={loadingFriends}
+              friendsError={friendsError}
               requests={friendRequests}
+              loadingRequests={loadingRequests}
+              requestsError={requestsError}
               onClose={() => setIsFriendsModalOpen(false)}
               onSelectChat={handleSelectChat}
+              onAcceptRequest={acceptFriendRequest}
+              isAcceptingRequest={isAcceptingRequest}
+              acceptRequestError={acceptRequestError}
+              acceptRequestSuccess={acceptRequestSuccess}
             />
           )}
         </AnimatePresence>

@@ -188,10 +188,10 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="border-t border-glass-border pt-4 mt-2 flex items-center justify-between">
           <div className="flex items-center gap-3 overflow-hidden">
              <div className="w-8 h-8 rounded-full bg-accent text-accent-text flex items-center justify-center font-bold flex-shrink-0">
-                 {user?.name?.[0]?.toUpperCase() || 'U'}
+                 {user?.displayName?.[0]?.toUpperCase() || 'U'}
              </div>
              <div className="flex flex-col overflow-hidden">
-                <span className="font-semibold truncate text-sm">{user?.name}</span>
+                <span className="font-semibold truncate text-sm">{user?.displayName}</span>
                 <span className="text-xs text-text-secondary truncate">{user?.email}</span>
              </div>
           </div>

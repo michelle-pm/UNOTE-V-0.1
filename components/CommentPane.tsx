@@ -41,7 +41,7 @@ const CommentPane: React.FC<CommentPaneProps> = ({ widget, comments, projectUser
   const filteredUsers = useMemo(() => {
     if (mentionQuery === null) return [];
     return projectUsers.filter(u => 
-        u.name.toLowerCase().includes(mentionQuery.toLowerCase()) && 
+        u.displayName.toLowerCase().includes(mentionQuery.toLowerCase()) && 
         u.uid !== currentUser?.uid
     );
   }, [mentionQuery, projectUsers, currentUser]);
@@ -65,7 +65,7 @@ const CommentPane: React.FC<CommentPaneProps> = ({ widget, comments, projectUser
   const handleSelectMention = (user: User) => {
     const text = newComment;
     const atIndex = text.lastIndexOf('@');
-    const newText = text.substring(0, atIndex) + `@${user.name} `;
+    const newText = text.substring(0, atIndex) + `@${user.displayName} `;
     
     setNewComment(newText);
     setMentions(prev => [...prev, user.uid]);
@@ -156,7 +156,7 @@ const CommentPane: React.FC<CommentPaneProps> = ({ widget, comments, projectUser
                     >
                        {filteredUsers.map(user => (
                            <button key={user.uid} onClick={() => handleSelectMention(user)} className="w-full text-left px-3 py-2 text-sm hover:bg-white/5 rounded-md">
-                               {user.name}
+                               {user.displayName}
                            </button>
                        ))}
                     </motion.div>

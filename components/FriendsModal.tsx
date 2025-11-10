@@ -2,19 +2,30 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, UserPlus, UserX, MessageSquare, Check, MailQuestion, Search, Loader2 } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, doc, runTransaction, serverTimestamp, addDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, runTransaction, serverTimestamp, addDoc, updateDoc, writeBatch, getDoc, deleteDoc } from 'firebase/firestore';
 import { User, FriendRequest } from '../types';
 import GlassButton from './GlassButton';
 
 interface FriendsModalProps {
   user: User;
   friends: User[];
+  loadingFriends: boolean;
+  friendsError: string | null;
   requests: FriendRequest[];
+  loadingRequests: boolean;
+  requestsError: string | null;
   onClose: () => void;
   onSelectChat: (userId: string) => void;
+  onAcceptRequest: (request: FriendRequest) => Promise<void>;
+  isAcceptingRequest: Record<string, boolean>;
+  acceptRequestError: string | null;
+  acceptRequestSuccess: string | null;
 }
 
-const FriendsModal: React.FC<FriendsModalProps> = ({ user, friends, requests, onClose, onSelectChat }) => {
+const FriendsModal: React.FC<FriendsModalProps> = ({
+  user, friends, loadingFriends, friendsError, requests, loadingRequests, requestsError,
+  onClose, onSelectChat, onAcceptRequest, isAcceptingRequest, acceptRequestError, acceptRequestSuccess
+}) => {
   const [searchEmail, setSearchEmail] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResult, setSearchResult] = useState<User | 'not_found' | null>(null);
@@ -56,7 +67,7 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, friends, requests, on
     setError('');
     setSuccess('');
 
-    if (!user.name || !user.email) {
+    if (!user.displayName || !user.email) {
       return setError("Информация о вашем профиле неполная.");
     }
     if (friend.uid === user.uid) {
@@ -67,7 +78,7 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, friends, requests, on
       const requestsRef = collection(db, "friend_requests");
       await addDoc(requestsRef, {
         from: user.uid,
-        fromName: user.name,
+        fromName: user.displayName,
         fromEmail: user.email,
         to: friend.uid,
         status: 'pending',
@@ -87,99 +98,35 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, friends, requests, on
     }
   };
 
-
-  const handleAcceptRequest = async (request: FriendRequest) => {
-    try {
-      await runTransaction(db, async (transaction) => {
-        // --- ALL READS FIRST ---
-        const requestRef = doc(db, "friend_requests", request.id);
-        const fromUserRef = doc(db, "users", request.from);
-        const toUserRef = doc(db, "users", request.to);
-        const chatId = [request.from, request.to].sort().join('_');
-        const chatRef = doc(db, "chats", chatId);
-
-        // Perform all reads concurrently for efficiency
-        const [requestSnap, fromUserSnap, toUserSnap, chatSnap] = await Promise.all([
-            transaction.get(requestRef),
-            transaction.get(fromUserRef),
-            transaction.get(toUserRef),
-            transaction.get(chatRef)
-        ]);
-
-        // --- VALIDATION ---
-        if (!requestSnap.exists()) {
-            throw new Error("Запрос в друзья не найден.");
-        }
-        const requestData = requestSnap.data();
-        if (requestData.to !== user.uid) {
-            throw new Error("Permission denied to accept this request.");
-        }
-        if (!fromUserSnap.exists() || !toUserSnap.exists()) {
-            throw new Error("Один из пользователей не найден.");
-        }
-        
-        const fromUserData = fromUserSnap.data();
-        const toUserData = toUserSnap.data();
-
-        // --- ALL WRITES LAST ---
-        // 1. Create bidirectional friendship documents
-        const friendshipRef1 = doc(db, "friendships", `${request.from}_${request.to}`);
-        const friendshipRef2 = doc(db, "friendships", `${request.to}_${request.from}`);
-        transaction.set(friendshipRef1, { users: [request.from, request.to], createdAt: serverTimestamp() });
-        transaction.set(friendshipRef2, { users: [request.to, request.from], createdAt: serverTimestamp() });
-        
-        // 2. Create chat document only if it doesn't exist
-        if (!chatSnap.exists()) {
-            transaction.set(chatRef, {
-                type: 'private',
-                participants: [request.from, request.to],
-                participantInfo: {
-                    [request.from]: { name: fromUserData.name, email: fromUserData.email },
-                    [request.to]: { name: toUserData.name, email: toUserData.email }
-                },
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-            });
-        }
-
-        // 3. Update request status
-        transaction.update(requestRef, { status: "accepted", acceptedAt: serverTimestamp() });
-      });
-      
-      setSuccess("Запрос в друзья принят!");
-
-    } catch(err: any) {
-      console.error("Error accepting friend request:", err);
-      setError(err.message || "Не удалось принять запрос.");
-    }
-  };
-
   const handleDeclineRequest = async (requestId: string) => {
     try {
       const requestRef = doc(db, "friend_requests", requestId);
-      await updateDoc(requestRef, { status: 'rejected' });
+      await deleteDoc(requestRef);
     } catch(err) { console.error("Error declining request: ", err); setError("Не удалось отклонить запрос."); }
   };
 
   const handleRemoveFriend = async (friendId: string) => {
     try {
-      const friendshipId1 = `${user.uid}_${friendId}`;
-      const friendshipId2 = `${friendId}_${user.uid}`;
-      
-      const batch = writeBatch(db);
-      
-      const friendRef1 = doc(db, "friendships", friendshipId1);
-      const friendRef2 = doc(db, "friendships", friendshipId2);
-      
-      batch.delete(friendRef1);
-      batch.delete(friendRef2);
+        const currentUserId = user.uid;
+        const q1 = query(collection(db, "friends"), where("participant1", "==", currentUserId), where("participant2", "==", friendId));
+        const q2 = query(collection(db, "friends"), where("participant1", "==", friendId), where("participant2", "==", currentUserId));
 
-      await batch.commit();
+        const [snapshot1, snapshot2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+        
+        if (snapshot1.empty && snapshot2.empty) {
+            throw new Error("Friendship document not found.");
+        }
 
-      setSuccess("Пользователь удален из друзей.");
-    } catch (err) { 
-        console.error("Error removing friend:", err); 
-        setError("Произошла ошибка при удалении друга."); 
+        const batch = writeBatch(db);
+        snapshot1.forEach(doc => batch.delete(doc.ref));
+        snapshot2.forEach(doc => batch.delete(doc.ref));
+
+        await batch.commit();
+
+        setSuccess("Пользователь удален из друзей.");
+    } catch (err: any) {
+        console.error("Error removing friend:", err);
+        setError(err.message || "Произошла ошибка при удалении друга.");
     }
   }
 
@@ -215,9 +162,9 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, friends, requests, on
                 ) : (
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3 overflow-hidden">
-                            <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center font-bold flex-shrink-0">{searchResult.name?.[0]?.toUpperCase()}</div>
+                            <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center font-bold flex-shrink-0">{searchResult.displayName?.[0]?.toUpperCase()}</div>
                             <div className="overflow-hidden">
-                                <p className="font-semibold truncate">{searchResult.name}</p>
+                                <p className="font-semibold truncate">{searchResult.displayName}</p>
                                 <p className="text-xs text-text-secondary truncate">{searchResult.email}</p>
                             </div>
                         </div>
@@ -230,51 +177,60 @@ const FriendsModal: React.FC<FriendsModalProps> = ({ user, friends, requests, on
         </div>
 
         <div className="flex-grow overflow-y-auto pr-2 -mr-2 space-y-2">
-            <>
-              {requests.length > 0 && (
-                <div className="mb-4">
-                  <h3 className="font-semibold text-sm text-text-secondary px-2 mb-2">Запросы в друзья ({requests.length})</h3>
-                  <div className="space-y-2">
-                    {requests.map(req => (
-                      <div key={req.id} className="flex items-center justify-between p-2 rounded-lg bg-white/5">
-                         <div className="flex items-center gap-3 overflow-hidden">
-                            <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center font-bold flex-shrink-0" title={req.fromEmail}>{req.fromName?.[0]?.toUpperCase()}</div>
-                            <p className="font-semibold truncate text-sm">{req.fromName}</p>
-                        </div>
-                        <div className="flex items-center flex-shrink-0">
-                            <button onClick={() => handleAcceptRequest(req)} className="p-2 text-green-400 hover:text-green-300 rounded-full hover:bg-green-500/10"><Check size={18} /></button>
-                            <button onClick={() => handleDeclineRequest(req.id)} className="p-2 text-red-500/80 hover:text-red-500 rounded-full hover:bg-red-500/10"><X size={18} /></button>
-                        </div>
+            {/* Friend Requests Section */}
+            {loadingRequests && <p>Загрузка заявок...</p>}
+            {requestsError && <p style={{ color: 'red' }}>{requestsError}</p>}
+            {!loadingRequests && !requestsError && requests.length > 0 && (
+              <div className="mb-4">
+                <h3 className="font-semibold text-sm text-text-secondary px-2 mb-2">Запросы в друзья ({requests.length})</h3>
+                <div className="space-y-2">
+                  {requests.map(req => (
+                    <div key={req.id} className="flex items-center justify-between p-2 rounded-lg bg-white/5">
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center font-bold flex-shrink-0">{req.fromName?.[0]?.toUpperCase()}</div>
+                        <p className="font-semibold truncate text-sm">{req.fromName}</p>
                       </div>
-                    ))}
-                  </div>
-                  <hr className="border-glass-border my-4"/>
+                      <div className="flex items-center flex-shrink-0">
+                        <button onClick={() => onAcceptRequest(req)} disabled={isAcceptingRequest[req.id]} className="p-2 text-green-400 hover:text-green-300 rounded-full hover:bg-green-500/10 disabled:opacity-50">
+                          {isAcceptingRequest[req.id] ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+                        </button>
+                        <button onClick={() => handleDeclineRequest(req.id)} className="p-2 text-red-500/80 hover:text-red-500 rounded-full hover:bg-red-500/10"><X size={18} /></button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              )}
-              {friends.length > 0 ? (
-                friends.map(friend => (
-                  <div key={friend.uid} className="group flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors">
-                    <div className="flex items-center gap-3 overflow-hidden">
-                      <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center font-bold flex-shrink-0">{friend.name?.[0]?.toUpperCase() || friend.email[0].toUpperCase()}</div>
-                      <div className="overflow-hidden">
-                          <p className="font-semibold truncate">{friend.name}</p>
-                          <p className="text-xs text-text-secondary truncate">{friend.email}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center flex-shrink-0">
-                        <button onClick={() => onSelectChat(friend.uid)} className="p-2 text-text-secondary hover:text-accent rounded-full hover:bg-white/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"><MessageSquare size={18} /></button>
-                        <button onClick={() => handleRemoveFriend(friend.uid)} className="p-2 text-red-500/80 hover:text-red-500 rounded-full hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"><UserX size={18} /></button>
+                <hr className="border-glass-border my-4"/>
+              </div>
+            )}
+
+            {/* Friends List Section */}
+            {loadingFriends && <p>Загрузка друзей...</p>}
+            {friendsError && <p style={{ color: 'red' }}>{friendsError}</p>}
+            {!loadingFriends && !friendsError && friends.length > 0 && (
+              friends.map(friend => (
+                <div key={friend.uid} className="group flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center font-bold flex-shrink-0">{friend.displayName?.[0]?.toUpperCase() || friend.email[0].toUpperCase()}</div>
+                    <div className="overflow-hidden">
+                        <p className="font-semibold truncate">{friend.displayName}</p>
+                        <p className="text-xs text-text-secondary truncate">{friend.email}</p>
                     </div>
                   </div>
-                ))
-              ) : requests.length === 0 && !searchResult ? (
-                  <div className="flex flex-col items-center justify-center h-full text-center text-text-secondary">
-                     <MailQuestion size={48} className="mb-4 text-text-secondary/50"/>
-                     <p className="font-semibold">У вас пока нет друзей.</p>
-                     <p className="text-xs mt-1">Ищите друзей по email, чтобы начать общаться.</p>
+                  <div className="flex items-center flex-shrink-0">
+                      <button onClick={() => onSelectChat(friend.uid)} className="p-2 text-text-secondary hover:text-accent rounded-full hover:bg-white/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"><MessageSquare size={18} /></button>
+                      <button onClick={() => handleRemoveFriend(friend.uid)} className="p-2 text-red-500/80 hover:text-red-500 rounded-full hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"><UserX size={18} /></button>
                   </div>
-              ) : null}
-            </>
+                </div>
+              ))
+            )}
+            
+            {!loadingFriends && !loadingRequests && friends.length === 0 && requests.length === 0 && !searchResult && (
+                <div className="flex flex-col items-center justify-center h-full text-center text-text-secondary">
+                   <MailQuestion size={48} className="mb-4 text-text-secondary/50"/>
+                   <p className="font-semibold">У вас пока нет друзей.</p>
+                   <p className="text-xs mt-1">Ищите друзей по email, чтобы начать общаться.</p>
+                </div>
+            )}
         </div>
       </motion.div>
     </>

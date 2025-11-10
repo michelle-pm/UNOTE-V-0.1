@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { User, Chat, Message, MessageType } from '../../types';
 import { db } from '../../firebase';
 import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, doc, updateDoc, Timestamp } from 'firebase/firestore';
-import { ArrowLeft, Paperclip, Mic, Send, Trash2, Loader2 } from 'lucide-react';
+import { ArrowLeft, Paperclip, Mic, Send, Trash2, Loader2, AlertTriangle } from 'lucide-react';
 import MessageComponent from './Message';
 import AudioRecorder from './AudioRecorder';
 
@@ -15,6 +15,9 @@ interface ChatViewProps {
 
 const ChatView: React.FC<ChatViewProps> = ({ chat, currentUser, onBack }) => {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(true);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
+  
   const [newMessage, setNewMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -22,14 +25,29 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, currentUser, onBack }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (!chat.id) {
+        setMessages([]);
+        setLoadingMessages(false);
+        return;
+    }
+    
+    setLoadingMessages(true);
+    setMessagesError(null);
+
     const q = query(
       collection(db, "chats", chat.id, "messages"),
-      orderBy("timestamp", "asc")
+      orderBy("createdAt", "asc")
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
       setMessages(msgs);
+      setLoadingMessages(false);
+    }, (error) => {
+        console.error("Ошибка при получении сообщений чата:", error);
+        setMessagesError(error.message);
+        setLoadingMessages(false);
     });
+
     return () => unsubscribe();
   }, [chat.id]);
   
@@ -37,7 +55,7 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, currentUser, onBack }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const sendMessage = async (messageData: Partial<Message>) => {
+  const sendMessage = async (messageData: Partial<Omit<Message, 'id' | 'createdAt'>>) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
 
@@ -45,8 +63,8 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, currentUser, onBack }) => {
         const messagePayload = {
             chatId: chat.id,
             senderId: currentUser.uid,
-            senderName: currentUser.name,
-            timestamp: serverTimestamp(),
+            senderName: currentUser.displayName,
+            createdAt: serverTimestamp(),
             ...messageData,
         };
         
@@ -72,8 +90,9 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, currentUser, onBack }) => {
             updatedAt: serverTimestamp(),
         });
 
-    } catch (error) {
-        console.error("Error sending message:", error);
+    } catch (error: any) {
+        console.error("Ошибка при отправке сообщения:", error.message);
+        // Add UI feedback for sending error
     } finally {
         setIsSubmitting(false);
     }
@@ -133,7 +152,15 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, currentUser, onBack }) => {
         </button>
       </div>
       <div className="flex-grow p-4 overflow-y-auto space-y-4">
-        {messages.map((msg, index) => (
+        {loadingMessages && <div className="flex justify-center items-center h-full"><Loader2 className="animate-spin" /></div>}
+        {messagesError && (
+            <div className="text-center p-4 bg-red-900/30 text-red-400 rounded-lg text-sm border border-red-500/30 flex flex-col items-center gap-2">
+                <AlertTriangle size={24} />
+                <p className="font-bold">Ошибка загрузки</p>
+                <p>{messagesError}</p>
+            </div>
+        )}
+        {!loadingMessages && !messagesError && messages.map((msg, index) => (
           <MessageComponent 
             key={msg.id} 
             message={msg} 
