@@ -1,5 +1,6 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Menu, Plus, Undo2, Users, Palette, MessageSquare } from 'lucide-react';
+import { Menu, Plus, Undo2, Users, Palette } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import GlassButton from './GlassButton';
 import { User } from '../types';
@@ -16,7 +17,6 @@ interface HeaderProps {
   projectColors: { color1: string; color2: string };
   onToggleFriendsModal: () => void;
   hasPendingRequests: boolean;
-  onToggleMessagesModal: () => void;
   projectUsers: User[];
   ownerUid: string;
   isTeamProject: boolean;
@@ -24,7 +24,7 @@ interface HeaderProps {
 
 const UserAvatar: React.FC<{ user: User | undefined, isOwner: boolean }> = ({ user, isOwner }) => (
     <div 
-        className={`w-7 h-7 rounded-full bg-accent text-accent-text flex items-center justify-center font-bold text-xs select-none border-2 ${isOwner ? 'border-accent-dark' : 'border-transparent'}`}
+        className={`w-8 h-8 rounded-full bg-accent text-accent-text flex items-center justify-center font-bold text-sm select-none border-2 ${isOwner ? 'border-accent-dark' : 'border-transparent'}`}
         title={`${user?.displayName} ${isOwner ? '(Владелец)' : ''}`}
     >
         {user?.displayName?.[0]?.toUpperCase() || '?'}
@@ -33,7 +33,7 @@ const UserAvatar: React.FC<{ user: User | undefined, isOwner: boolean }> = ({ us
 
 const Header: React.FC<HeaderProps> = ({ 
     title, onToggleSidebar, onAddWidget, showAddWidgetButton, onUndo, canUndo, 
-    onUpdateGradients, projectColors, onToggleFriendsModal, hasPendingRequests, onToggleMessagesModal,
+    onUpdateGradients, projectColors, onToggleFriendsModal, hasPendingRequests,
     projectUsers, ownerUid, isTeamProject
 }) => {
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
@@ -62,7 +62,7 @@ const Header: React.FC<HeaderProps> = ({
   }
 
   return (
-    <header className="sticky top-0 flex-shrink-0 flex items-center justify-between h-16 px-4 z-20 bg-black/20 backdrop-blur-xl border-b border-glass-border text-text-light">
+    <header className="sticky top-0 flex-shrink-0 flex items-center justify-between h-16 px-4 z-20 bg-slate-900/20 backdrop-blur-xl border-b border-glass-border text-text-light">
       <div className="flex items-center gap-2">
         <motion.button 
           whileTap={{ scale: 0.9 }}
@@ -104,14 +104,6 @@ const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
       <div className="flex items-center gap-1">
-        <motion.button
-          whileTap={{ scale: 0.9 }}
-          onClick={onToggleMessagesModal}
-          className="p-2 rounded-full hover:bg-white/10 transition-colors"
-          aria-label="Сообщения"
-        >
-          <MessageSquare size={18} />
-        </motion.button>
          <motion.button
           whileTap={{ scale: 0.9 }}
           onClick={onToggleFriendsModal}

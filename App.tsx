@@ -1,17 +1,15 @@
 
-
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Layout } from 'react-grid-layout';
 import { v4 as uuidv4 } from 'uuid';
 import html2canvas from 'html2canvas';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Plus } from 'lucide-react';
-import { collection, query, where, onSnapshot, doc, addDoc, updateDoc, deleteDoc, getDoc, writeBatch, getDocs, orderBy, serverTimestamp, runTransaction, documentId } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, addDoc, updateDoc, deleteDoc, getDoc, writeBatch, getDocs, orderBy, serverTimestamp, runTransaction, documentId, Timestamp } from 'firebase/firestore';
 import { db } from './firebase';
 
 
-import { Widget, WidgetType, Project, WidgetData, FolderData, User, LineData, PlanData, PieData, Comment, Chat, FriendRequest, Friend } from './types';
+import { Widget, WidgetType, Project, WidgetData, FolderData, User, LineData, PlanData, PieData, Comment, FriendRequest, Friend } from './types';
 import useLocalStorage from './hooks/useLocalStorage';
 import { useFriends } from './hooks/useFriends';
 import { useFriendRequests } from './hooks/useFriendRequests';
@@ -29,7 +27,6 @@ import AuthPage from './components/AuthPage';
 import AccountSettingsModal from './components/AccountSettingsModal';
 import ShareModal from './components/ShareModal';
 import FriendsModal from './components/FriendsModal';
-import MessagesModal from './components/messaging/MessagesModal';
 import GlassButton from './components/GlassButton';
 
 
@@ -162,7 +159,6 @@ const App: React.FC = () => {
   const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isFriendsModalOpen, setIsFriendsModalOpen] = useState(false);
-  const [isMessagesModalOpen, setIsMessagesModalOpen] = useState(false);
   const [addWidgetParentId, setAddWidgetParentId] = useState<string | null>(null);
   const [draggingWidgetId, setDraggingWidgetId] = useState<string | null>(null);
 
@@ -180,14 +176,13 @@ const App: React.FC = () => {
     'lastSeenWidgetCommentTimestamps', {}, user?.uid
   );
 
-  // --- REFACTORED: Messaging and Friends State using Hooks ---
-  const [chats, setChats] = useState<Chat[]>([]);
+  // Friends State
   const [friendDetails, setFriendDetails] = useState<User[]>([]);
-  const [activeChat, setActiveChat] = useState<Chat | null>(null);
-  
   const currentUserId = user ? user.uid : null;
+  
   const { friends, loadingFriends, friendsError } = useFriends(db, currentUserId);
   const { friendRequests, loadingRequests, requestsError } = useFriendRequests(db, currentUserId);
+
 
   const [isAcceptingRequest, setIsAcceptingRequest] = useState<Record<string, boolean>>({});
   const [acceptRequestError, setAcceptRequestError] = useState<string | null>(null);
@@ -259,10 +254,9 @@ const App: React.FC = () => {
         return;
     }
     const fetchUsers = async () => {
-        // Fix for: Type 'unknown[]' is not assignable to type 'string[]'.
-        // Safely filter participant_uids to ensure it's a valid array of strings,
-        // which prevents type errors when chunking the array for Firestore queries.
-        const uids = (Array.isArray(activeProject.participant_uids) ? activeProject.participant_uids : [])
+        // FIX: Cast to any[] to handle ambiguous types from Firestore and allow filtering.
+        // This resolves the "Type 'unknown[]' is not assignable to type 'string[]'" error.
+        const uids = (Array.isArray(activeProject.participant_uids) ? activeProject.participant_uids as any[] : [])
             .filter((uid): uid is string => typeof uid === 'string' && uid.length > 0);
 
         if (uids.length === 0) {
@@ -312,30 +306,6 @@ const App: React.FC = () => {
           setScrollToWidgetId(null);
       }
   }, [scrollToWidgetId, activeProject?.widgets]);
-  
-    // Fetch user's social data (chats, friends)
-    useEffect(() => {
-        if (!user?.uid) {
-            setChats([]);
-            setFriendDetails([]);
-            return;
-        }
-        
-        // Listener for Chats
-        const chatsQuery = query(
-            collection(db, "chats"), 
-            where("participants", "array-contains", user.uid),
-            orderBy("updatedAt", "desc")
-        );
-        const unsubscribeChats = onSnapshot(chatsQuery, (snapshot) => {
-            const chatsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat));
-            setChats(chatsData);
-        }, (error) => console.error("Error fetching chats:", error));
-
-        return () => {
-            unsubscribeChats();
-        };
-    }, [user?.uid]);
     
     // Effect to fetch user details for friends from the useFriends hook
     useEffect(() => {
@@ -372,21 +342,6 @@ const App: React.FC = () => {
 
         fetchFriendUsers();
     }, [friends, user?.uid]);
-
-
-    const handleSelectChat = useCallback((chatOrUserId: string) => {
-        let chat = chats.find(c => c.id === chatOrUserId);
-        if (!chat) { // If userId is passed, find the corresponding private chat
-            const privateChatId = [user?.uid, chatOrUserId].sort().join('_');
-            chat = chats.find(c => c.id === privateChatId);
-        }
-
-        if (chat) {
-            setActiveChat(chat);
-            setIsFriendsModalOpen(false);
-            setIsMessagesModalOpen(true);
-        }
-    }, [chats, user?.uid]);
 
 
   // Comments logic
@@ -1039,7 +994,6 @@ const App: React.FC = () => {
   
   const acceptFriendRequest = async (request: FriendRequest) => {
     if (!user) {
-        console.error("Пользователь не аутентифицирован.");
         setAcceptRequestError("Пользователь не аутентифицирован.");
         return;
     }
@@ -1048,88 +1002,40 @@ const App: React.FC = () => {
     setAcceptRequestError(null);
     setAcceptRequestSuccess(null);
 
-    const friendRequestRef = doc(db, "friend_requests", request.id);
-
     try {
         await runTransaction(db, async (transaction) => {
-            console.log("--- Отладка acceptFriendRequest: Начало транзакции ---");
-            console.log("currentUserId:", user.uid);
-            console.log("requestId:", request.id);
-
-            // --- PHASE 1: READS ---
+            const friendRequestRef = doc(db, "friend_requests", request.id);
             const friendRequestDoc = await transaction.get(friendRequestRef);
-            console.log("friendRequestRef path:", friendRequestRef.path);
 
             if (!friendRequestDoc.exists()) {
                 throw new Error("Заявка на дружбу не существует или уже была принята.");
             }
-            const requestData = friendRequestDoc.data() as FriendRequest;
-            console.log("friendRequestDoc data (прочитано):", requestData);
 
-            // Use fresh data from the transaction as the source of truth
+            const requestData = friendRequestDoc.data();
             const senderId = requestData.from;
             const recipientId = requestData.to;
 
-            const chatRef = doc(db, "chats", [senderId, recipientId].sort().join('_'));
-            const senderUserRef = doc(db, "users", senderId);
-            const recipientUserRef = doc(db, "users", recipientId);
-
-            const chatDoc = await transaction.get(chatRef);
-            const senderUserDoc = await transaction.get(senderUserRef);
-            const recipientUserDoc = await transaction.get(recipientUserRef);
-
-            // --- PHASE 2: VALIDATION & DATA PREP ---
-            if (!senderUserDoc.exists() || !recipientUserDoc.exists()) {
-                throw new Error("Один из пользователей не найден.");
-            }
             if (user.uid !== recipientId) {
                 throw new Error("Недостаточно разрешений: Вы не являетесь получателем этой заявки.");
             }
             
-            const senderUserData = senderUserDoc.data() as User;
-            const recipientUserData = recipientUserDoc.data() as User;
-
-            // --- PHASE 3: WRITES ---
-            // 1. Create friendship document
+            // Write 1: Create friendship document
             const newFriendDocRef = doc(collection(db, "friends"));
-            const friendDataToSet = {
+            transaction.set(newFriendDocRef, {
                 participant1: senderId,
                 participant2: recipientId,
                 status: "accepted",
                 createdAt: serverTimestamp(),
-            };
-            console.log("newFriendDocRef path:", newFriendDocRef.path);
-            console.log("friendDataToSet:", friendDataToSet);
-            transaction.set(newFriendDocRef, friendDataToSet);
+            });
 
-            // 2. Create chat document if it doesn't exist
-            if (!chatDoc.exists()) {
-                const chatDataToSet = {
-                    participants: [senderId, recipientId].sort(),
-                    type: 'private',
-                    createdAt: serverTimestamp(),
-                    updatedAt: serverTimestamp(),
-                    participantInfo: {
-                        [senderId]: { name: senderUserData.displayName, email: senderUserData.email },
-                        [recipientId]: { name: recipientUserData.displayName, email: recipientUserData.email } 
-                    },
-                    lastMessage: null,
-                };
-                console.log("newChatRef path:", chatRef.path);
-                console.log("chatDataToSet:", chatDataToSet);
-                transaction.set(chatRef, chatDataToSet);
-            }
-
-            // 3. Delete the friend request
-            console.log("Удаление friendRequestRef:", friendRequestRef.path);
+            // Write 2: Delete the friend request
             transaction.delete(friendRequestRef);
         });
 
-        console.log("--- Транзакция успешно завершена ---");
         setAcceptRequestSuccess("Заявка успешно принята!");
     } catch (error: any) {
         console.error("Ошибка при принятии заявки на дружбу:", error.message, error);
-        setAcceptRequestError(error.message);
+        setAcceptRequestError(error.message || "Произошла неизвестная ошибка.");
     } finally {
         setIsAcceptingRequest(prev => ({ ...prev, [request.id]: false }));
     }
@@ -1203,7 +1109,6 @@ const App: React.FC = () => {
               projectColors={projectColors}
               onToggleFriendsModal={() => setIsFriendsModalOpen(prev => !prev)}
               hasPendingRequests={hasPendingRequests}
-              onToggleMessagesModal={() => setIsMessagesModalOpen(prev => !prev)}
               projectUsers={projectUsers}
               ownerUid={activeProject.owner_uid}
               isTeamProject={activeProject.isTeamProject}
@@ -1276,29 +1181,12 @@ const App: React.FC = () => {
               loadingRequests={loadingRequests}
               requestsError={requestsError}
               onClose={() => setIsFriendsModalOpen(false)}
-              onSelectChat={handleSelectChat}
               onAcceptRequest={acceptFriendRequest}
               isAcceptingRequest={isAcceptingRequest}
               acceptRequestError={acceptRequestError}
               acceptRequestSuccess={acceptRequestSuccess}
             />
           )}
-        </AnimatePresence>
-
-        <AnimatePresence>
-            {isMessagesModalOpen && user && (
-                <MessagesModal
-                    user={user}
-                    allUsers={projectUsers}
-                    chats={chats}
-                    activeChat={activeChat}
-                    setActiveChat={setActiveChat}
-                    onClose={() => {
-                        setIsMessagesModalOpen(false);
-                        setActiveChat(null);
-                    }}
-                />
-            )}
         </AnimatePresence>
 
          <AnimatePresence>

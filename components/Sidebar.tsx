@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Trash2, Edit3, LogOut, Settings, Save, Share2, MoreHorizontal, Copy, Image as ImageIcon } from 'lucide-react';
@@ -94,7 +95,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <div className="flex-grow overflow-y-auto pr-2 -mr-2">
-        <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-2 px-2">Проекты</h3>
+        <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-2 px-2 pb-2 border-b border-glass-border">Проекты</h3>
         <ul className="space-y-1">
           {projects.map(p => (
             <li key={p.id} className="relative px-2">

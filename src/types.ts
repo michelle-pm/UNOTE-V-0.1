@@ -1,3 +1,4 @@
+
 import { Layout } from 'react-grid-layout';
 import { Timestamp, FieldValue } from 'firebase/firestore';
 
@@ -33,36 +34,6 @@ export interface FriendRequest extends FirestoreDocument {
   status: 'pending' | 'accepted' | 'rejected';
 }
 
-export interface Chat extends FirestoreDocument {
-  participants: string[];
-  participantInfo: { [uid: string]: { name: string, email: string }};
-  type: 'private' | 'group';
-  name?: string; // For group chats
-  lastMessage?: {
-    senderId: string;
-    text: string;
-    timestamp: Timestamp;
-  };
-}
-
-export enum MessageType {
-  Text = 'text',
-  Image = 'image',
-  Video = 'video',
-  Audio = 'audio',
-  File = 'file',
-}
-
-export interface Message extends FirestoreDocument {
-  chatId: string;
-  senderId: string;
-  text: string; // For text, or file name for others
-  type: MessageType;
-  fileUrl?: string; // base64 data URL
-  fileType?: string; // mime type
-  audioDuration?: number; // in seconds
-}
-
 // --- EXISTING WIDGET/PROJECT INTERFACES ---
 
 export enum WidgetType {
@@ -88,8 +59,7 @@ export interface BaseWidgetData {
 export interface PlanData extends BaseWidgetData {
   current: number;
   target: number;
-  unit: '%' | '₽' | 'custom';
-  customUnit: string;
+  unit: '₽';
   color: string;
   color2: string;
   userSetColors?: boolean;

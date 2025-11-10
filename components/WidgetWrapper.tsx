@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo, createContext, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GripVertical, Trash2, Plus, ChevronDown, ChevronUp, User, UserX, Copy, Edit3, MessageSquare } from 'lucide-react';
@@ -127,7 +128,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         />
 
         <div className="relative z-0 flex flex-col w-full h-full">
-            <div className={`drag-handle flex items-center h-12 px-4 ${isWidgetEditable && !isFolder ? 'cursor-grab' : 'cursor-default'} flex-shrink-0`}>
+            <div className={`drag-handle flex items-center h-12 px-4 ${isWidgetEditable && !isFolder ? 'cursor-grab' : 'cursor-default'} flex-shrink-0 border-b border-white/10`}>
               <div className={`flex-grow flex items-center gap-2 min-w-0 ${isFolder && folderData?.isCollapsed ? 'justify-center' : ''}`} onDoubleClick={handleDoubleClick}>
                 {isFolder && onToggleFolder && (
                     <button onClick={onToggleFolder} className="p-1 -ml-1 rounded-full hover:bg-white/10 no-drag flex-shrink-0">

@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, Firestore, Timestamp } from 'firebase/firestore';
 import { Friend } from '../types';

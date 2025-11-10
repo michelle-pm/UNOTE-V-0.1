@@ -7,11 +7,19 @@ function getInitialValue<T>(key: string, initialValue: T, userId?: string | null
     return initialValue;
   }
 
+  const item = window.localStorage.getItem(prefixedKey);
+
+  // Explicitly check for null or the literal string "undefined", which can be stored by mistake.
+  if (item === null || item === "undefined") {
+    return initialValue;
+  }
+
   try {
-    const item = window.localStorage.getItem(prefixedKey);
-    return item ? JSON.parse(item) : initialValue;
+    // Attempt to parse, which correctly handles valid JSON strings like "null".
+    return JSON.parse(item);
   } catch (error) {
-    console.error(`Error reading localStorage key “${prefixedKey}”:`, error);
+    console.error(`Error parsing JSON for localStorage key “${prefixedKey}”:`, error);
+    // If parsing fails, fall back to the initial value to prevent a crash.
     return initialValue;
   }
 }
@@ -44,7 +52,12 @@ function useLocalStorage<T>(
   useEffect(() => {
     try {
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem(prefixedKey, JSON.stringify(storedValue));
+        // Prevent storing the literal string "undefined".
+        if (storedValue === undefined) {
+          window.localStorage.removeItem(prefixedKey);
+        } else {
+          window.localStorage.setItem(prefixedKey, JSON.stringify(storedValue));
+        }
       }
     } catch (error) {
       console.error(`Error setting localStorage key “${prefixedKey}”:`, error);

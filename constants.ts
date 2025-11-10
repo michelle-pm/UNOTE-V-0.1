@@ -17,10 +17,9 @@ export const WIDGET_DEFAULTS: { [key in WidgetType]: WidgetDefaults } = {
   [WidgetType.Plan]: {
     data: {
       title: 'План выполнения',
-      current: 50,
-      target: 100,
-      unit: '%',
-      customUnit: '',
+      current: 5000,
+      target: 10000,
+      unit: '₽',
       color: '#D9C8FF',
       color2: '#B092FF',
     },

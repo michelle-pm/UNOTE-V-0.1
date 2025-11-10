@@ -1,3 +1,4 @@
+
 import { Layout } from 'react-grid-layout';
 import { Timestamp } from 'firebase/firestore';
 
@@ -34,8 +35,7 @@ export interface BaseWidgetData {
 export interface PlanData extends BaseWidgetData {
   current: number;
   target: number;
-  unit: '%' | '₽' | 'custom';
-  customUnit: string;
+  unit: '₽';
   color: string;
   color2: string;
   userSetColors?: boolean;
@@ -220,43 +220,4 @@ export interface FriendRequest {
   status: 'pending' | 'accepted' | 'rejected';
   createdAt: Timestamp;
   acceptedAt?: Timestamp;
-}
-
-
-// Messaging Interfaces
-export enum MessageType {
-  Text = 'text',
-  Image = 'image',
-  Video = 'video',
-  Audio = 'audio',
-  File = 'file',
-}
-
-export interface Message {
-  id: string;
-  chatId: string;
-  senderId: string;
-  senderName: string; // denormalized
-  type: MessageType;
-  content: string; // for text, or file name for others
-  fileUrl?: string; // base64 data URL
-  fileType?: string; // mime type
-  audioDuration?: number; // in seconds
-  timestamp: Timestamp;
-}
-
-export interface Chat {
-  id: string;
-  type: 'private' | 'group';
-  participants: string[];
-  participantInfo: { [uid: string]: { name: string, email: string }}; // Denormalized user info
-  name?: string; // for group chats
-  avatar?: string; // emoji for group chats
-  lastMessage?: {
-    text: string;
-    timestamp: Timestamp;
-    senderId: string;
-  };
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
 }
