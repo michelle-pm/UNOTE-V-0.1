@@ -1,4 +1,4 @@
-import React, { useMemo, useState, Suspense } from 'react';
+import React, { useMemo, useState, Suspense, useRef } from 'react';
 import { Widget, WidgetType, FolderData, WidgetData, User, ProjectMemberRole } from '../../types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus } from 'lucide-react';
@@ -30,6 +30,7 @@ interface FolderWidgetProps {
   currentUserRole: ProjectMemberRole | 'owner' | null;
   isTeamProject: boolean;
   onToggleCommentPane: (widgetId: string | null) => void;
+  onMoveWidget: (widgetId: string, newParentId: string | null, dropPosition?: { x: number, y: number, w: number, h: number }) => void;
 }
 
 const FolderWidget: React.FC<FolderWidgetProps> = ({ 
@@ -37,11 +38,12 @@ const FolderWidget: React.FC<FolderWidgetProps> = ({
     onRemoveWidget, onCopyWidget, onInitiateAddWidget, onChildrenLayoutChange,
     onDragStart, onDragStop, onResizeStop, isAnythingDragging, isMobile,
     projectUsers, currentUser, currentUserRole, isTeamProject, onToggleFolder,
-    onToggleCommentPane
+    onToggleCommentPane, onMoveWidget
 }) => {
   const data = widget.data as FolderData;
   const { isCollapsed, childrenLayouts } = data;
   const [currentBreakpoint, setCurrentBreakpoint] = useState<string>('lg');
+  const folderRef = useRef<HTMLDivElement>(null);
   
   const childrenWidgets = useMemo(() => {
     return allWidgets.filter(w => w.parentId === widget.id);
@@ -62,6 +64,31 @@ const FolderWidget: React.FC<FolderWidgetProps> = ({
       };
       onChildrenLayoutChange(widget.id, newAllLayouts);
   };
+  
+  const handleDragStopInFolder = (layout: Layout[], oldItem: Layout, newItem: Layout, placeholder: Layout, e: MouseEvent) => {
+    onDragStop();
+    const folderElement = document.getElementById(`widget-${widget.id}`);
+    if (!folderElement) return;
+
+    const folderRect = folderElement.getBoundingClientRect();
+    
+    // Check if the center of the dragged item is outside the folder bounds
+    const itemRect = (e.target as HTMLElement).closest('.react-grid-item')?.getBoundingClientRect();
+    if(!itemRect) return;
+
+    const itemCenterX = itemRect.left + itemRect.width / 2;
+    const itemCenterY = itemRect.top + itemRect.height / 2;
+
+    if (itemCenterX < folderRect.left || itemCenterX > folderRect.right || itemCenterY < folderRect.top || itemCenterY > folderRect.bottom) {
+        onMoveWidget(newItem.i, null, {
+            x: Math.round((folderRect.left + newItem.x * (folderRect.width / NESTED_GRID_COLS[currentBreakpoint as keyof typeof NESTED_GRID_COLS])) / 50), // Approximate conversion to main grid coords
+            y: Infinity, // Let RGL place it at the bottom
+            w: newItem.w / 2, // Approximate conversion
+            h: newItem.h / 2
+        });
+    }
+  };
+
 
   const processedChildrenLayouts = useMemo(() => {
     const newLayouts = JSON.parse(JSON.stringify(childrenLayouts || {}));
@@ -83,7 +110,7 @@ const FolderWidget: React.FC<FolderWidgetProps> = ({
   }, [childrenLayouts, childrenWidgets]);
 
   return (
-    <div className="h-full w-full flex flex-col">
+    <div ref={folderRef} className="h-full w-full flex flex-col">
       <AnimatePresence initial={false}>
       {!isCollapsed && (
         <motion.div
@@ -129,7 +156,7 @@ const FolderWidget: React.FC<FolderWidgetProps> = ({
                   margin={[8, 8]}
                   isBounded={true}
                   onDragStart={onDragStart}
-                  onDragStop={onDragStop}
+                  onDragStop={handleDragStopInFolder}
                   onResizeStop={onResizeStop}
                   isDraggable={isOverallEditable && !isMobile}
                   isResizable={isOverallEditable && !isMobile}
@@ -145,7 +172,7 @@ const FolderWidget: React.FC<FolderWidgetProps> = ({
                     })();
 
                     return (
-                      <div key={child.id} id={`widget-${child.id}`} style={{ overflow: 'visible' }}>
+                      <div key={child.id} id={`widget-${child.id}`} className={child.type === WidgetType.Folder ? 'folder-widget' : ''} style={{ overflow: 'visible' }}>
                           <WidgetWrapper
                               widget={child}
                               onRemove={() => onRemoveWidget(child.id)}

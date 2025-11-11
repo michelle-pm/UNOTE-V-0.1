@@ -1,18 +1,19 @@
-
 import React, { useState, useRef, useEffect, useMemo, createContext, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GripVertical, Trash2, Plus, ChevronDown, ChevronUp, User, UserX, Copy, Edit3, MessageSquare } from 'lucide-react';
+import { GripVertical, Trash2, Plus, ChevronDown, ChevronUp, User, Copy, Edit3, MessageSquare, MoreHorizontal, ChevronRight, ArrowLeft, UserX, Check } from 'lucide-react';
 import { FolderData, Widget, User as UserType, ProjectMemberRole, WidgetType } from '../types';
 import useResizeObserver from '../hooks/useResizeObserver';
 import { UnreadStatusContext } from './Dashboard';
+import Avatar from './Avatar';
+import UserTooltip from './UserTooltip';
 
 
 export const WidgetSizeContext = createContext({ width: 0, height: 0 });
 
 const UserAvatar: React.FC<{ user: UserType | undefined }> = ({ user }) => (
-    <div className="w-5 h-5 rounded-full bg-accent text-accent-text flex items-center justify-center font-bold text-xs select-none" title={`Назначено: ${user?.displayName}`}>
-        {user?.displayName?.[0]?.toUpperCase() || '?'}
-    </div>
+    <>
+      {user && <Avatar user={user} className="w-5 h-5" />}
+    </>
 );
 
 interface WidgetWrapperProps {
@@ -40,9 +41,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 }) => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState(widget.data.title || '');
-  const [isAssignMenuOpen, setIsAssignMenuOpen] = useState(false);
-  const [isControlsVisible, setIsControlsVisible] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [menuView, setMenuView] = useState<'main' | 'assign'>('main');
+  
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const { width, height } = useResizeObserver(contentRef);
@@ -66,16 +69,27 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       titleInputRef.current.select();
     }
   }, [isEditingTitle]);
-
+  
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsAssignMenuOpen(false);
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node) &&
+        menuButtonRef.current &&
+        !menuButtonRef.current.contains(event.target as Node)
+      ) {
+        setIsMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const handleMenuClose = () => {
+    setIsMenuOpen(false);
+    // Delay resetting view to allow for exit animation
+    setTimeout(() => setMenuView('main'), 200);
+  }
   
   const handleUpdate = (field: string, value: any) => {
       onUpdateWidgetData(widget.id, { ...widget.data, [field]: value });
@@ -83,7 +97,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   
   const handleAssignUser = (uid: string | null) => {
       onUpdateWidgetData(widget.id, widget.data, uid);
-      setIsAssignMenuOpen(false);
+      setMenuView('main');
+      handleMenuClose();
   }
 
   const handleTitleBlur = () => {
@@ -114,16 +129,14 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   
   return (
     <div 
-        onMouseEnter={() => setIsControlsVisible(true)}
-        onMouseLeave={() => setIsControlsVisible(false)}
-        className="relative w-full h-full transition-shadow duration-300 shadow-lg shadow-black/10 rounded-3xl widget-grain-container text-text-light"
+        className={`relative w-full h-full transition-shadow duration-300 rounded-3xl widget-grain-container text-text-light ${isMenuOpen ? 'z-30' : 'z-10'}`}
     >
         <div
             className="absolute inset-0 w-full h-full rounded-3xl -z-10"
             style={{
-                backgroundColor: isNested ? 'rgba(30, 41, 59, 0.25)' : 'rgba(30, 41, 59, 0.2)',
-                border: `1px solid ${isNested ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.15)'}`,
-                backdropFilter: 'blur(32px)',
+                backgroundColor: 'rgba(22, 27, 41, 0.4)', // Darker background
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                backdropFilter: 'blur(48px)',
             }}
         />
 
@@ -135,7 +148,13 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
                       {folderData?.isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
                     </button>
                 )}
-                {assignedUser && <UserAvatar user={assignedUser} />}
+                {assignedUser && (
+                  <UserTooltip user={assignedUser}>
+                      <div className="flex-shrink-0">
+                        <UserAvatar user={assignedUser} />
+                      </div>
+                  </UserTooltip>
+                )}
                 
                 {!isTitleWidget && (
                   <div className="overflow-hidden flex-grow min-w-0">
@@ -150,76 +169,98 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
                         className="w-full text-base font-semibold bg-transparent focus:outline-none p-1 -m-1 rounded-md bg-white/10 no-drag"
                       />
                     ) : (
-                      <div className="flex items-center gap-1 min-w-0">
-                        <h3 className={`font-semibold truncate select-none transition-all duration-300 text-shadow ${isFolder && folderData?.isCollapsed ? 'text-lg text-text-light' : 'text-base text-text-light'}`}>{widget.data.title}</h3>
-                        {isWidgetEditable && (
-                           <button onClick={() => setIsEditingTitle(true)} className={`no-drag p-1 rounded-full text-text-secondary/60 hover:text-text-light transition-opacity flex-shrink-0 ${isControlsVisible ? 'opacity-100' : 'opacity-0'}`}>
-                             <Edit3 size={12} />
-                           </button>
-                        )}
-                      </div>
+                      <h3 className={`font-semibold truncate select-none transition-all duration-300 ${isFolder && folderData?.isCollapsed ? 'text-lg text-text-light' : 'text-base text-text-light'}`}>{widget.data.title}</h3>
                     )}
                   </div>
                 )}
               </div>
-                <div className={`flex items-center gap-0.5 ml-auto transition-opacity duration-200 ${isControlsVisible ? 'opacity-100' : 'opacity-0'}`}>
-                    {isWidgetEditable && isFolder && onInitiateAddWidget && !folderData?.isCollapsed && (
-                        <button onClick={() => onInitiateAddWidget(widget.id)} className="no-drag p-1 rounded-full text-text-secondary hover:text-text-light hover:bg-white/10 transition-colors">
-                            <Plus size={14} />
+                <div className="flex items-center gap-1 ml-auto">
+                    <div className="relative">
+                        <button 
+                            ref={menuButtonRef}
+                            onClick={() => setIsMenuOpen(prev => !prev)} 
+                            className="no-drag p-1.5 rounded-full text-text-secondary hover:text-text-light hover:bg-white/10 transition-colors"
+                        >
+                            <MoreHorizontal size={16} />
                         </button>
-                    )}
-                    
-                    {isCommentable && (
-                      <button onClick={() => onToggleCommentPane(widget.id)} className="relative no-drag p-1 rounded-full text-text-secondary hover:text-text-light hover:bg-white/10 transition-colors">
-                          <MessageSquare size={14} />
-                          {hasUnreadComments && <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-accent rounded-full"></div>}
-                      </button>
-                    )}
-
-                    {isWidgetEditable && (
-                        <div className="flex items-center gap-0 no-drag">
-                             {isTeamProject && ['owner', 'editor'].includes(currentUserRole || '') && (
-                                <div className="relative" ref={menuRef}>
-                                    <button onClick={() => setIsAssignMenuOpen(!isAssignMenuOpen)} className="p-1 rounded-full text-text-secondary hover:text-text-light hover:bg-white/10 transition-colors">
-                                        <User size={14} />
-                                    </button>
-                                     <AnimatePresence>
-                                        {isAssignMenuOpen && (
-                                            <motion.div 
-                                                initial={{ opacity: 0, y: -10 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                exit={{ opacity: 0, y: -10 }}
-                                                className="absolute top-full right-0 mt-2 w-56 bg-[#1a202c] rounded-lg shadow-xl z-50 overflow-hidden border border-glass-border p-2"
-                                            >
-                                                <div className="pl-2 pr-2 py-1 space-y-1 max-h-48 overflow-y-auto">
-                                                    {projectUsers.map(u => (
-                                                        <button key={u.uid} onClick={() => handleAssignUser(u.uid)} className={`w-full text-left px-2 py-1.5 text-sm rounded-md hover:bg-white/5 ${widget.assignedUser === u.uid ? 'bg-white/10' : ''}`}>
-                                                            {u.displayName}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                                {widget.assignedUser && (
-                                                    <div className="p-2 border-t border-glass-border">
-                                                        <button onClick={() => handleAssignUser(null)} className="w-full flex items-center gap-2 text-left px-2 py-1.5 text-sm text-amber-500 rounded-md hover:bg-amber-500/10">
-                                                        <UserX size={14}/> Снять назначение
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </motion.div>
+                        <AnimatePresence>
+                        {isMenuOpen && (
+                            <motion.div
+                                ref={menuRef}
+                                initial={{ opacity: 0, y: -5, scale: 0.95 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: -5, scale: 0.95 }}
+                                transition={{ duration: 0.1, ease: 'easeOut' }}
+                                className="absolute top-full right-0 mt-1 w-56 bg-[#2c3344]/90 backdrop-blur-xl rounded-lg shadow-xl z-50 overflow-auto border border-glass-border"
+                            >
+                                <AnimatePresence mode="wait">
+                                {menuView === 'main' ? (
+                                    <motion.div
+                                        key="main"
+                                        initial={{ x: -10, opacity: 0 }}
+                                        animate={{ x: 0, opacity: 1 }}
+                                        exit={{ x: -10, opacity: 0 }}
+                                        transition={{ duration: 0.15 }}
+                                        className="p-2 space-y-1"
+                                    >
+                                        {!isTitleWidget && isWidgetEditable && (
+                                            <button onClick={() => { setIsEditingTitle(true); handleMenuClose(); }} className="w-full flex items-center gap-3 text-left px-3 py-1.5 text-sm hover:bg-white/5 rounded-md"><Edit3 size={14} />Переименовать</button>
                                         )}
-                                     </AnimatePresence>
-                                </div>
-                             )}
-                            <button onClick={onCopy} className="p-1 rounded-full text-text-secondary hover:text-text-light hover:bg-white/10 transition-colors">
-                                <Copy size={14} />
-                            </button>
-                            <button onClick={onRemove} className="p-1 rounded-full text-text-secondary hover:text-red-500 hover:bg-red-500/10 transition-colors">
-                                <Trash2 size={14} />
-                            </button>
-                        </div>
-                    )}
-                    
-                    {!isFolder && isWidgetEditable && (<GripVertical className="cursor-grab text-text-secondary/30 ml-1" size={18} />)}
+                                        {isFolder && isWidgetEditable && onInitiateAddWidget && !folderData?.isCollapsed && (
+                                            <button onClick={() => { onInitiateAddWidget(widget.id); handleMenuClose(); }} className="w-full flex items-center gap-3 text-left px-3 py-1.5 text-sm hover:bg-white/5 rounded-md"><Plus size={14} />Добавить виджет</button>
+                                        )}
+                                        {isWidgetEditable && isTeamProject && (
+                                            <button onClick={() => setMenuView('assign')} className="w-full flex items-center justify-between text-left px-3 py-1.5 text-sm hover:bg-white/5 rounded-md">
+                                                <span className="flex items-center gap-3"><User size={14} />Назначить</span>
+                                                <ChevronRight size={14} />
+                                            </button>
+                                        )}
+                                        {isCommentable && (
+                                            <button onClick={() => { onToggleCommentPane(widget.id); handleMenuClose(); }} className="w-full flex items-center gap-3 text-left px-3 py-1.5 text-sm hover:bg-white/5 rounded-md relative">
+                                                <MessageSquare size={14} />Комментарии
+                                                {hasUnreadComments && <div className="absolute top-1/2 right-2 -translate-y-1/2 w-2 h-2 bg-accent rounded-full"></div>}
+                                            </button>
+                                        )}
+                                        <div className="h-px bg-white/10 my-1"></div>
+                                        <button onClick={() => { onCopy(); handleMenuClose(); }} className="w-full flex items-center gap-3 text-left px-3 py-1.5 text-sm hover:bg-white/5 rounded-md"><Copy size={14} />Копировать</button>
+                                        {isWidgetEditable && (
+                                            <button onClick={() => { onRemove(); handleMenuClose(); }} className="w-full flex items-center gap-3 text-left px-3 py-1.5 text-sm text-red-400 hover:bg-red-500/10 rounded-md"><Trash2 size={14} />Удалить</button>
+                                        )}
+                                    </motion.div>
+                                ) : (
+                                    <motion.div
+                                        key="assign"
+                                        initial={{ x: 10, opacity: 0 }}
+                                        animate={{ x: 0, opacity: 1 }}
+                                        exit={{ x: 10, opacity: 0 }}
+                                        transition={{ duration: 0.15 }}
+                                        className="p-2"
+                                    >
+                                        <button onClick={() => setMenuView('main')} className="w-full flex items-center gap-2 text-left px-2 py-1.5 text-xs text-text-secondary hover:text-text-light rounded-md mb-2">
+                                            <ArrowLeft size={14} /> Назад
+                                        </button>
+                                        <div className="space-y-1 max-h-40 overflow-y-auto">
+                                            <button onClick={() => handleAssignUser(null)} className="w-full flex items-center gap-3 text-left px-3 py-1.5 text-sm hover:bg-white/5 rounded-md">
+                                                <UserX size={14} className="text-red-400" /> Снять назначение
+                                            </button>
+                                            {projectUsers.map(user => (
+                                                <button key={user.uid} onClick={() => handleAssignUser(user.uid)} className="w-full flex items-center justify-between text-left px-3 py-1.5 text-sm hover:bg-white/5 rounded-md">
+                                                    <span className="flex items-center gap-2">
+                                                        <Avatar user={user} className="w-5 h-5" />
+                                                        <span className="truncate">{user.displayName}</span>
+                                                    </span>
+                                                    {widget.assignedUser === user.uid && <Check size={14} className="text-accent" />}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </motion.div>
+                                )}
+                                </AnimatePresence>
+                            </motion.div>
+                        )}
+                        </AnimatePresence>
+                    </div>
+                    {!isFolder && isWidgetEditable && (<GripVertical className="cursor-grab text-text-secondary/30" size={18} />)}
                 </div>
             </div>
             <div className={`px-4 ${isFolder && folderData?.isCollapsed ? 'pb-0' : 'pb-4'} flex-grow overflow-hidden`}>

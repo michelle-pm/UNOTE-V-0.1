@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Send, AlertTriangle, Loader2 } from 'lucide-react';
 import { Comment, User, Widget } from '../types';
+import Avatar from './Avatar';
 
 interface CommentPaneProps {
   widget: Widget;
@@ -123,20 +124,21 @@ const CommentPane: React.FC<CommentPaneProps> = ({ widget, comments, projectUser
                 <p>{error}</p>
             </div>
           )}
-          {!error && comments.map(comment => (
-            <div key={comment.id} className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-full bg-white/10 flex-shrink-0 flex items-center justify-center font-bold text-xs" title={comment.authorName}>
-                {comment.authorName[0].toUpperCase()}
-              </div>
-              <div className="flex-grow">
-                <div className="flex items-baseline gap-2">
-                  <p className="font-semibold text-sm">{comment.authorName}</p>
-                  <p className="text-xs text-text-secondary">{formatDate(comment.createdAt)}</p>
+          {!error && comments.map(comment => {
+              const author = projectUsers.find(u => u.uid === comment.authorUid) || { displayName: comment.authorName, uid: comment.authorUid };
+              return (
+                <div key={comment.id} className="flex items-start gap-3">
+                  <Avatar user={author} className="w-8 h-8 flex-shrink-0" />
+                  <div className="flex-grow">
+                    <div className="flex items-baseline gap-2">
+                      <p className="font-semibold text-sm">{author.displayName}</p>
+                      <p className="text-xs text-text-secondary">{formatDate(comment.createdAt)}</p>
+                    </div>
+                    <p className="text-sm text-text-light/90 whitespace-pre-wrap break-words">{comment.content}</p>
+                  </div>
                 </div>
-                <p className="text-sm text-text-light/90 whitespace-pre-wrap break-words">{comment.content}</p>
-              </div>
-            </div>
-          ))}
+              )
+           })}
            {!error && comments.length === 0 && (
             <div className="text-center text-text-secondary text-sm p-8">
                 Комментариев пока нет.
@@ -155,8 +157,9 @@ const CommentPane: React.FC<CommentPaneProps> = ({ widget, comments, projectUser
                         className="absolute bottom-full left-4 mb-2 w-[calc(100%-2rem)] max-h-40 overflow-y-auto bg-[#1a202c] rounded-lg shadow-xl z-50 p-2 border border-glass-border"
                     >
                        {filteredUsers.map(user => (
-                           <button key={user.uid} onClick={() => handleSelectMention(user)} className="w-full text-left px-3 py-2 text-sm hover:bg-white/5 rounded-md">
-                               {user.displayName}
+                           <button key={user.uid} onClick={() => handleSelectMention(user)} className="w-full text-left px-3 py-2 text-sm hover:bg-white/5 rounded-md flex items-center gap-2">
+                               <Avatar user={user} className="w-6 h-6" />
+                               <span>{user.displayName}</span>
                            </button>
                        ))}
                     </motion.div>

@@ -1,6 +1,5 @@
-
 import { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, Firestore, Timestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, Firestore, Timestamp } from 'firebase/firestore';
 import { Friend } from '../types';
 
 export function useFriends(firestore: Firestore, currentUserId: string | null) {

@@ -5,6 +5,7 @@ import { db } from '../firebase';
 import { collection, query, where, getDocs, doc, runTransaction, serverTimestamp, addDoc, updateDoc, writeBatch, getDoc, deleteDoc } from 'firebase/firestore';
 import { User, FriendRequest } from '../types';
 import GlassButton from './GlassButton';
+import Avatar from './Avatar';
 
 interface FriendsModalProps {
   user: User;
@@ -163,7 +164,7 @@ const FriendsModal: React.FC<FriendsModalProps> = ({
                   ) : (
                       <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3 overflow-hidden">
-                              <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center font-bold flex-shrink-0">{searchResult.displayName?.[0]?.toUpperCase()}</div>
+                              <Avatar user={searchResult} className="w-9 h-9 flex-shrink-0" />
                               <div className="overflow-hidden">
                                   <p className="font-semibold truncate text-sm">{searchResult.displayName || searchResult.email}</p>
                                   {searchResult.displayName && <p className="text-xs text-text-secondary truncate">{searchResult.email}</p>}
@@ -177,18 +178,24 @@ const FriendsModal: React.FC<FriendsModalProps> = ({
               </AnimatePresence>
           </div>
 
-          <div className="flex-grow overflow-y-auto pr-2 -mr-2 space-y-2">
+          <div className="flex-grow overflow-y-auto pr-2 -mr-2 space-y-4">
               {/* Friend Requests Section */}
-              {loadingRequests && <p>Загрузка заявок...</p>}
-              {requestsError && <p style={{ color: 'red' }}>{requestsError}</p>}
+              {loadingRequests && (
+                <div className="flex justify-center items-center p-4">
+                    <Loader2 size={24} className="animate-spin text-text-secondary" />
+                </div>
+              )}
+              {requestsError && (
+                <p className="text-red-500 text-sm text-center p-2">{requestsError}</p>
+              )}
               {!loadingRequests && !requestsError && requests.length > 0 && (
-                <div className="mb-4">
+                <div>
                   <h3 className="font-semibold text-sm text-text-secondary px-2 mb-2">Запросы в друзья ({requests.length})</h3>
-                  <div className="space-y-2">
+                  <div className="bg-white/5 rounded-lg p-2 space-y-1">
                     {requests.map(req => (
-                      <div key={req.id} className="flex items-center justify-between p-2 rounded-lg bg-white/5">
+                      <div key={req.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-white/10 transition-colors">
                         <div className="flex items-center gap-3 overflow-hidden">
-                          <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center font-bold flex-shrink-0">{req.fromName?.[0]?.toUpperCase()}</div>
+                           <Avatar user={{ displayName: req.fromName }} className="w-9 h-9 flex-shrink-0" />
                            <div className="overflow-hidden">
                                 <p className="font-semibold truncate text-sm">{req.fromName || req.fromEmail}</p>
                                 {req.fromName && <p className="text-xs text-text-secondary truncate">{req.fromEmail}</p>}
@@ -203,28 +210,38 @@ const FriendsModal: React.FC<FriendsModalProps> = ({
                       </div>
                     ))}
                   </div>
-                  <hr className="border-glass-border my-4"/>
                 </div>
               )}
 
               {/* Friends List Section */}
-              {loadingFriends && <p>Загрузка друзей...</p>}
-              {friendsError && <p style={{ color: 'red' }}>{friendsError}</p>}
-              {!loadingFriends && !friendsError && friends.length > 0 && (
-                friends.map(friend => (
-                  <div key={friend.uid} className="group flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors">
-                    <div className="flex items-center gap-3 overflow-hidden">
-                      <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center font-bold flex-shrink-0">{friend.displayName?.[0]?.toUpperCase() || friend.email[0].toUpperCase()}</div>
-                      <div className="overflow-hidden">
-                          <p className="font-semibold truncate text-sm">{friend.displayName || friend.email}</p>
-                          {friend.displayName && <p className="text-xs text-text-secondary truncate">{friend.email}</p>}
-                      </div>
-                    </div>
-                    <div className="flex items-center flex-shrink-0">
-                        <button onClick={() => handleRemoveFriend(friend.uid)} className="p-2 text-red-500/80 hover:text-red-500 rounded-full hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"><UserX size={18} /></button>
-                    </div>
+              {loadingFriends && (
+                  <div className="flex justify-center items-center p-4">
+                      <Loader2 size={24} className="animate-spin text-text-secondary" />
                   </div>
-                ))
+              )}
+              {friendsError && (
+                  <p className="text-red-500 text-sm text-center p-2">{friendsError}</p>
+              )}
+              {!loadingFriends && !friendsError && friends.length > 0 && (
+                  <div>
+                      <h3 className="font-semibold text-sm text-text-secondary px-2 mb-2">Друзья ({friends.length})</h3>
+                      <div className="bg-white/5 rounded-lg p-2 space-y-1">
+                          {friends.map(friend => (
+                            <div key={friend.uid} className="group flex items-center justify-between p-2 rounded-lg hover:bg-white/10 transition-colors">
+                              <div className="flex items-center gap-3 overflow-hidden">
+                                <Avatar user={friend} className="w-9 h-9 flex-shrink-0" />
+                                <div className="overflow-hidden">
+                                    <p className="font-semibold truncate text-sm">{friend.displayName || friend.email}</p>
+                                    {friend.displayName && <p className="text-xs text-text-secondary truncate">{friend.email}</p>}
+                                </div>
+                              </div>
+                              <div className="flex items-center flex-shrink-0">
+                                  <button onClick={() => handleRemoveFriend(friend.uid)} className="p-2 text-red-500/80 hover:text-red-500 rounded-full hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"><UserX size={18} /></button>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                  </div>
               )}
               
               {!loadingFriends && !loadingRequests && friends.length === 0 && requests.length === 0 && !searchResult && (

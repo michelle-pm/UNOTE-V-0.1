@@ -1,17 +1,40 @@
-
 import { Layout } from 'react-grid-layout';
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp, FieldValue } from 'firebase/firestore';
 
 // Basic types
 export type ProjectMemberRole = 'visitor' | 'manager' | 'editor';
 
-export interface User {
+// --- NEW/REFACTORED INTERFACES ---
+
+// Generic interface for Firestore documents
+export interface FirestoreDocument {
+  id: string;
+  createdAt: Timestamp | FieldValue;
+  updatedAt?: Timestamp | FieldValue;
+}
+
+export interface User extends FirestoreDocument {
   uid: string;
   displayName: string;
   email: string;
+  photoURL?: string;
 }
 
-// Widget Types Enum
+export interface Friend extends FirestoreDocument {
+  participant1: string; // UID of user 1
+  participant2: string; // UID of user 2
+  status: 'accepted';
+}
+
+export interface FriendRequest extends FirestoreDocument {
+  from: string; // UID of sender
+  fromName: string; // Denormalized sender name
+  to: string; // UID of recipient
+  status: 'pending' | 'accepted' | 'rejected';
+}
+
+// --- EXISTING WIDGET/PROJECT INTERFACES ---
+
 export enum WidgetType {
   Plan = 'plan',
   Pie = 'pie',
@@ -199,25 +222,4 @@ export interface Comment {
   content: string;
   createdAt: Timestamp;
   mentions: string[]; // array of UIDs
-}
-
-// FIX: Add Friend interface to be exported.
-export interface Friend {
-  id: string;
-  participant1: string;
-  participant2: string;
-  status: 'accepted';
-  createdAt: Timestamp;
-}
-
-// Friend Request Interface
-export interface FriendRequest {
-  id: string;
-  from: string;
-  fromName: string;
-  fromEmail: string;
-  to: string;
-  status: 'pending' | 'accepted' | 'rejected';
-  createdAt: Timestamp;
-  acceptedAt?: Timestamp;
 }

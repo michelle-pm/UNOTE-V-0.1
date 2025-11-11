@@ -50,6 +50,7 @@ interface DashboardProps {
   onToggleCommentPane: (widgetId: string | null) => void;
   onAddComment: (widgetId: string, content: string, mentions: string[]) => Promise<void>;
   commentsError: string | null;
+  onMoveWidget: (widgetId: string, newParentId: string | null, dropPosition?: { x: number, y: number, w: number, h: number }) => void;
 }
 
 const EmptyDashboard: React.FC = () => (
@@ -100,9 +101,10 @@ const DashboardGrid = React.memo(({
                     }
                     return false;
                 })();
+                const isFolder = widget.type === WidgetType.Folder;
 
                 return (
-                    <div key={widget.id} id={`widget-${widget.id}`} style={{ overflow: 'visible' }}>
+                    <div key={widget.id} id={`widget-${widget.id}`} className={isFolder ? 'folder-widget' : ''} style={{ overflow: 'visible' }}>
                         <WidgetWrapper
                             widget={widget}
                             onRemove={() => onRemoveWidget(widget.id)}
@@ -136,7 +138,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     draggingWidgetId, onDragStart, onDragStop, onResizeStop, setDraggingWidgetId, gridCols,
     currentUser, currentUserRole, projectUsers,
     comments, unreadStatusByWidget, activeCommentWidgetId, onToggleCommentPane, onAddComment,
-    commentsError
+    commentsError, onMoveWidget
 }) => {
   const [isMobile, setIsMobile] = useState(false);
   const { widgets, layouts } = project;
@@ -251,6 +253,32 @@ const Dashboard: React.FC<DashboardProps> = ({
   const isAnythingDragging = !!draggingWidgetId;
 
   const isOverallEditable = currentUserRole === 'owner' || currentUserRole === 'editor' || currentUserRole === 'manager';
+  
+  const handleMainDragStop = (layout: Layout[], oldItem: Layout, newItem: Layout) => {
+    onDragStop();
+    if (oldItem.x === newItem.x && oldItem.y === newItem.y) return;
+
+    const draggedWidget = project.widgets.find(w => w.id === newItem.i);
+    // Dragging from main grid into a folder
+    if (draggedWidget && !draggedWidget.parentId) {
+        const droppedOnFolder = project.widgets.find(w => {
+            if (w.type !== WidgetType.Folder || w.id === newItem.i) return false;
+            const folderLayout = layout.find(l => l.i === w.id);
+            if (!folderLayout || (w.data as FolderData).isCollapsed) return false;
+            // Collision detection
+            return (
+                newItem.x < folderLayout.x + folderLayout.w &&
+                newItem.x + newItem.w > folderLayout.x &&
+                newItem.y < folderLayout.y + folderLayout.h &&
+                newItem.y + newItem.h > folderLayout.y
+            );
+        });
+
+        if (droppedOnFolder) {
+            onMoveWidget(newItem.i, droppedOnFolder.id);
+        }
+    }
+  };
 
   const renderWidget = useCallback((widget: Widget, allWidgets: Widget[], isWidgetEditable: boolean) => {
     const updateData = (data: WidgetData) => onUpdateWidgetData(widget.id, data);
@@ -300,11 +328,12 @@ const Dashboard: React.FC<DashboardProps> = ({
             currentUserRole={currentUserRole}
             isTeamProject={project.isTeamProject}
             onToggleCommentPane={onToggleCommentPane}
+            onMoveWidget={onMoveWidget}
         />;
       default:
         return <div>Unknown widget type</div>;
     }
-  }, [onUpdateWidgetData, onRemoveWidget, onCopyWidget, onInitiateAddWidget, onChildrenLayoutChange, onDragStart, onDragStop, onResizeStop, setDraggingWidgetId, isAnythingDragging, isMobile, projectUsers, currentUser, currentUserRole, project, onToggleFolder, onToggleCommentPane]);
+  }, [onUpdateWidgetData, onRemoveWidget, onCopyWidget, onInitiateAddWidget, onChildrenLayoutChange, onDragStart, onDragStop, onResizeStop, setDraggingWidgetId, isAnythingDragging, isMobile, projectUsers, currentUser, currentUserRole, project, onToggleFolder, onToggleCommentPane, onMoveWidget]);
   
   const processedLayouts = useMemo(() => {
     const newLayouts = JSON.parse(JSON.stringify(layouts));
@@ -357,7 +386,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             gridCols={gridCols}
             onLayoutChange={onLayoutChange}
             onDragStart={onDragStart}
-            onDragStop={onDragStop}
+            onDragStop={handleMainDragStop}
             onResizeStop={onResizeStop}
             onRemoveWidget={onRemoveWidget}
             onCopyWidget={onCopyWidget}

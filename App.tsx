@@ -1,19 +1,18 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Layout } from 'react-grid-layout';
 import { v4 as uuidv4 } from 'uuid';
 import html2canvas from 'html2canvas';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Plus } from 'lucide-react';
-import { collection, query, where, onSnapshot, doc, addDoc, updateDoc, deleteDoc, getDoc, writeBatch, getDocs, orderBy, serverTimestamp, runTransaction, documentId, Timestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, addDoc, updateDoc, deleteDoc, getDoc, writeBatch, getDocs, orderBy, serverTimestamp, runTransaction, documentId, Timestamp, arrayUnion, arrayRemove, deleteField } from 'firebase/firestore';
 import { db } from './firebase';
 
 
-import { Widget, WidgetType, Project, WidgetData, FolderData, User, LineData, PlanData, PieData, Comment, FriendRequest, Friend } from './types';
+import { Widget, WidgetType, Project, WidgetData, FolderData, User, LineData, PlanData, PieData, Comment, FriendRequest, Friend, ProjectMemberRole } from './types';
 import useLocalStorage from './hooks/useLocalStorage';
 import { useFriends } from './hooks/useFriends';
 import { useFriendRequests } from './hooks/useFriendRequests';
-import { useFriendNotifications } from './hooks/useFriendNotifications';
+// import { useFriendNotifications } from './hooks/useFriendNotifications';
 import { WIDGET_DEFAULTS } from './constants';
 import { getRandomGradient } from './utils/colors';
 import { getRandomEmoji } from './utils/emojis';
@@ -24,10 +23,9 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import WidgetMenu from './components/WidgetMenu';
 import AuthPage from './components/AuthPage';
-import AccountSettingsModal from './components/AccountSettingsModal';
-import ShareModal from './components/ShareModal';
 import FriendsModal from './components/FriendsModal';
 import GlassButton from './components/GlassButton';
+import ManageAccessModal from './components/ManageAccessModal';
 
 
 const MAX_HISTORY_LENGTH = 20;
@@ -103,7 +101,7 @@ const cleanProjectForSerialization = (project: Project): Project => {
 
 const App: React.FC = () => {
   const { isAuthenticated, user, logout } = useAuth();
-  useFriendNotifications(user);
+  // useFriendNotifications(user);
   
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
@@ -156,17 +154,14 @@ const App: React.FC = () => {
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isWidgetMenuOpen, setIsWidgetMenuOpen] = useState(false);
-  const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
-  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isFriendsModalOpen, setIsFriendsModalOpen] = useState(false);
+  const [isManageAccessModalOpen, setIsManageAccessModalOpen] = useState(false);
   const [addWidgetParentId, setAddWidgetParentId] = useState<string | null>(null);
   const [draggingWidgetId, setDraggingWidgetId] = useState<string | null>(null);
 
   const [history, setHistory] = useState<{ projectId: string; projectState: Project }[]>([]);
   const [scrollToWidgetId, setScrollToWidgetId] = useState<string | null>(null);
   
-  const [bgImage, setBgImage] = useLocalStorage<string | null>('bgImage', user?.uid);
-  const [bgBlur, setBgBlur] = useLocalStorage<number>('bgBlur', 0, user?.uid);
 
   // Comments State
   const [comments, setComments] = useState<Comment[]>([]);
@@ -189,20 +184,7 @@ const App: React.FC = () => {
   const [acceptRequestSuccess, setAcceptRequestSuccess] = useState<string | null>(null);
 
   const hasPendingRequests = friendRequests.length > 0;
-
-  useEffect(() => {
-      const bgElement = document.getElementById('app-bg-image');
-      if (bgElement) {
-          if (bgImage) {
-              bgElement.style.backgroundImage = `url(${bgImage})`;
-              bgElement.style.filter = `blur(${bgBlur}px)`;
-          } else {
-              bgElement.style.backgroundImage = 'none';
-              bgElement.style.filter = 'none';
-          }
-      }
-  }, [bgImage, bgBlur]);
-
+  
   const safeDeepClone = useCallback((project: Project): Project | null => {
     if (!project) return null;
     try {
@@ -254,17 +236,16 @@ const App: React.FC = () => {
         return;
     }
     const fetchUsers = async () => {
-        // FIX: Cast to any[] to handle ambiguous types from Firestore and allow filtering.
-        // This resolves the "Type 'unknown[]' is not assignable to type 'string[]'" error.
-        const uids = (Array.isArray(activeProject.participant_uids) ? activeProject.participant_uids as any[] : [])
-            .filter((uid): uid is string => typeof uid === 'string' && uid.length > 0);
+        // FIX: Cast participant_uids to unknown[] to correctly use the type guard filter,
+        // ensuring type safety for data coming from Firestore.
+        const uids = ((Array.isArray(activeProject.participant_uids) ? activeProject.participant_uids : []) as unknown[])
+            .filter((uid: unknown): uid is string => typeof uid === 'string' && uid.length > 0);
 
         if (uids.length === 0) {
             setProjectUsers([]);
             return;
         }
         
-        // Firestore 'in' query is limited to 30 elements
         const chunks: string[][] = [];
         for (let i = 0; i < uids.length; i += 30) {
             chunks.push(uids.slice(i, i + 30));
@@ -289,7 +270,7 @@ const App: React.FC = () => {
         }
     };
     fetchUsers();
-  }, [activeProject]);
+  }, [activeProject?.id, JSON.stringify(activeProject?.participant_uids)]);
 
   const isEditableOverall = currentUserRole === 'owner' || currentUserRole === 'editor' || currentUserRole === 'manager';
   const canAddWidgets = currentUserRole === 'owner' || currentUserRole === 'editor';
@@ -817,12 +798,14 @@ const App: React.FC = () => {
       if (!isEditableOverall) return;
       setDraggingWidgetId(oldItem.i);
   }, [isEditableOverall]);
+
   const handleDragStop = useCallback(() => {
       if (!isEditableOverall) return;
       pushStateToHistory();
       setDraggingWidgetId(null);
   }, [pushStateToHistory, isEditableOverall]);
-   const handleResizeStop = useCallback(() => {
+
+  const handleResizeStop = useCallback(() => {
       if (!isEditableOverall) return;
       pushStateToHistory();
   }, [pushStateToHistory, isEditableOverall]);
@@ -921,13 +904,6 @@ const App: React.FC = () => {
       pushStateToHistory();
       await updateDoc(doc(db, 'projects', id), { name: newName });
   };
-
-  const handleUpdateProject = async (updatedProject: Project) => {
-      if (currentUserRole !== 'owner') return;
-      pushStateToHistory();
-      const { id, ...projectData } = updatedProject;
-      await updateDoc(doc(db, 'projects', id), { ...projectData });
-  };
   
   const handleSaveAsPng = useCallback(() => {
     const dashboardElement = document.querySelector('.react-grid-layout') as HTMLElement;
@@ -969,7 +945,158 @@ const App: React.FC = () => {
 
     await updateProjectInFirestore({ widgets: newWidgets });
   }, [activeProject, pushStateToHistory, updateProjectInFirestore]);
+  
+    const handleInviteUserToProject = useCallback(async (email: string, role: ProjectMemberRole) => {
+        if (!activeProjectId || !user) throw new Error("Нет активного проекта или пользователя");
 
+        const emailToInvite = email.trim().toLowerCase();
+        if (emailToInvite === user.email) {
+          throw new Error("Вы не можете пригласить самого себя.");
+        }
+        if (projectUsers.some(u => u.email === emailToInvite)) {
+            throw new Error("Этот пользователь уже имеет доступ.");
+        }
+        
+        const usersRef = collection(db, "users");
+        const q = query(usersRef, where("email", "==", emailToInvite));
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.empty) {
+            throw new Error("Пользователь с таким email не найден.");
+        }
+        const userToInviteDoc = querySnapshot.docs[0];
+        const userToInviteUid = userToInviteDoc.id;
+
+        const projectRef = doc(db, "projects", activeProjectId);
+        await updateDoc(projectRef, {
+            [`member_uids.${userToInviteUid}`]: role,
+            participant_uids: arrayUnion(userToInviteUid),
+            isTeamProject: true,
+        });
+        
+    }, [activeProjectId, user, projectUsers]);
+
+    const handleRemoveUserFromProject = useCallback(async (uidToRemove: string) => {
+        if (!activeProject || currentUserRole !== 'owner') return;
+
+        const projectRef = doc(db, "projects", activeProject.id);
+        
+        const batch = writeBatch(db);
+
+        // 1. Remove from participants and members
+        batch.update(projectRef, {
+            [`member_uids.${uidToRemove}`]: deleteField(),
+            participant_uids: arrayRemove(uidToRemove),
+        });
+
+        // 2. Unassign from all widgets
+        const widgetsToUpdate = activeProject.widgets.map(w => {
+            if (w.assignedUser === uidToRemove) {
+                return { ...w, assignedUser: null };
+            }
+            return w;
+        });
+        
+        batch.update(projectRef, { widgets: widgetsToUpdate.map(cleanProjectForSerialization) });
+        
+        await batch.commit();
+
+    }, [activeProject, currentUserRole]);
+    
+    const handleChangeUserRole = useCallback(async (uid: string, role: ProjectMemberRole) => {
+        if (!activeProjectId || currentUserRole !== 'owner') return;
+        const projectRef = doc(db, "projects", activeProjectId);
+        await updateDoc(projectRef, {
+            [`member_uids.${uid}`]: role,
+        });
+    }, [activeProjectId, currentUserRole]);
+
+  const handleMoveWidget = useCallback(async (widgetId: string, newParentId: string | null, dropPosition?: { x: number, y: number, w: number, h: number }) => {
+    if (!activeProject) return;
+    pushStateToHistory();
+    const projectCopy = safeDeepClone(activeProject);
+    if (!projectCopy) return;
+
+    const widgetIndex = projectCopy.widgets.findIndex(w => w.id === widgetId);
+    if (widgetIndex === -1) return;
+    const widget = projectCopy.widgets[widgetIndex];
+    const oldParentId = widget.parentId || null;
+
+    if (oldParentId === newParentId) return; // No change
+
+    // --- Update widget's parentId ---
+    if (newParentId) {
+        widget.parentId = newParentId;
+    } else {
+        delete widget.parentId;
+    }
+
+    // --- Move layout item ---
+    if (oldParentId) {
+        // --- Moving FROM a folder ---
+        const oldParentFolderIndex = projectCopy.widgets.findIndex(w => w.id === oldParentId);
+        if (oldParentFolderIndex > -1) {
+            const parentFolder = projectCopy.widgets[oldParentFolderIndex] as Widget & { data: FolderData };
+            const newChildrenLayouts = { ...parentFolder.data.childrenLayouts };
+            Object.keys(newChildrenLayouts).forEach(bp => {
+                if (newChildrenLayouts[bp]) {
+                    newChildrenLayouts[bp] = newChildrenLayouts[bp].filter(l => l.i !== widgetId);
+                }
+            });
+            projectCopy.widgets[oldParentFolderIndex] = { ...parentFolder, data: { ...parentFolder.data, childrenLayouts: newChildrenLayouts } };
+        }
+    } else {
+        // --- Moving FROM the main grid ---
+        Object.keys(projectCopy.layouts).forEach(bp => {
+            if (projectCopy.layouts[bp]) {
+                projectCopy.layouts[bp] = projectCopy.layouts[bp].filter(l => l.i !== widgetId);
+            }
+        });
+    }
+
+    if (newParentId) {
+        // --- Moving INTO a folder ---
+        const newParentFolderIndex = projectCopy.widgets.findIndex(w => w.id === newParentId);
+        if (newParentFolderIndex > -1) {
+            const parentFolder = projectCopy.widgets[newParentFolderIndex] as Widget & { data: FolderData };
+            const childrenLayouts = parentFolder.data.childrenLayouts || {};
+            const defaults = WIDGET_DEFAULTS[widget.type];
+            
+            Object.keys(NESTED_GRID_COLS).forEach(bp => {
+                if (!childrenLayouts[bp]) childrenLayouts[bp] = [];
+                const layout = childrenLayouts[bp];
+                const newLayoutItem = {
+                    i: widgetId,
+                    x: 0, y: Infinity, // Place at the bottom
+                    w: (defaults.w || defaults.minW) * 2, h: (defaults.h || defaults.minH) * 2,
+                    minW: defaults.minW * 2, minH: defaults.minH * 2
+                };
+                layout.push(newLayoutItem);
+            });
+            projectCopy.widgets[newParentFolderIndex] = { ...parentFolder, data: { ...parentFolder.data, childrenLayouts } };
+        }
+    } else {
+        // --- Moving INTO the main grid ---
+        const defaults = WIDGET_DEFAULTS[widget.type];
+        Object.keys(GRID_COLS).forEach(bp => {
+            if (!projectCopy.layouts[bp]) projectCopy.layouts[bp] = [];
+            const layout = projectCopy.layouts[bp];
+            const newLayoutItem = {
+                i: widgetId,
+                x: dropPosition ? dropPosition.x : 0,
+                y: dropPosition ? dropPosition.y : Infinity,
+                w: dropPosition ? dropPosition.w : (defaults.w || defaults.minW),
+                h: dropPosition ? dropPosition.h : (defaults.h || defaults.minH),
+                minW: defaults.minW, minH: defaults.minH,
+            };
+            layout.push(newLayoutItem);
+        });
+    }
+
+    await updateProjectInFirestore({ widgets: projectCopy.widgets, layouts: projectCopy.layouts });
+
+  }, [activeProject, pushStateToHistory, safeDeepClone, updateProjectInFirestore]);
+    
   // Automatically create a project if the user has none
   useEffect(() => {
     if (isAuthenticated && user && initialProjectsLoadDone && !projectsLoading && projects.length === 0) {
@@ -1085,14 +1212,9 @@ const App: React.FC = () => {
                   onProjectSelect={setActiveProjectId}
                   user={user}
                   onLogout={logout}
-                  onOpenAccountSettings={() => setIsAccountSettingsOpen(true)}
-                  onShare={() => setIsShareModalOpen(true)}
+                  onOpenManageAccess={() => setIsManageAccessModalOpen(true)}
                   isEditable={currentUserRole === 'owner' || currentUserRole === 'editor'}
                   isOwner={currentUserRole === 'owner'}
-                  bgImage={bgImage}
-                  setBgImage={setBgImage}
-                  bgBlur={bgBlur}
-                  setBgBlur={setBgBlur}
               />
             </>
           )}
@@ -1145,28 +1267,22 @@ const App: React.FC = () => {
                   onToggleCommentPane={handleToggleCommentPane}
                   onAddComment={handleAddComment}
                   commentsError={commentsError}
+                  onMoveWidget={handleMoveWidget}
                 />
               </div>
             </main>
         </div>
         
-         <AnimatePresence>
-          {isAccountSettingsOpen && (
-            <AccountSettingsModal 
-              onClose={() => setIsAccountSettingsOpen(false)} 
-              activeProjectName={activeProject?.name || 'Дашборд'}
-            />
-          )}
-        </AnimatePresence>
-
         <AnimatePresence>
-          {isShareModalOpen && activeProject && (
-              <ShareModal
-                  project={activeProject}
-                  projectUsers={projectUsers}
-                  onClose={() => setIsShareModalOpen(false)}
-                  onUpdateProject={handleUpdateProject}
-              />
+          {isManageAccessModalOpen && (
+            <ManageAccessModal
+                project={activeProject}
+                projectUsers={projectUsers}
+                onClose={() => setIsManageAccessModalOpen(false)}
+                onInviteUser={handleInviteUserToProject}
+                onRemoveUser={handleRemoveUserFromProject}
+                onChangeUserRole={handleChangeUserRole}
+            />
           )}
         </AnimatePresence>
 

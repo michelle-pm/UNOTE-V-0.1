@@ -1,10 +1,11 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Menu, Plus, Undo2, Users, Palette } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import GlassButton from './GlassButton';
 import { User } from '../types';
 import GradientColorPicker from './GradientColorPicker';
+import Avatar from './Avatar';
+import UserTooltip from './UserTooltip';
 
 interface HeaderProps {
   title: string;
@@ -22,12 +23,9 @@ interface HeaderProps {
   isTeamProject: boolean;
 }
 
-const UserAvatar: React.FC<{ user: User | undefined, isOwner: boolean }> = ({ user, isOwner }) => (
-    <div 
-        className={`w-8 h-8 rounded-full bg-accent text-accent-text flex items-center justify-center font-bold text-sm select-none border-2 ${isOwner ? 'border-accent-dark' : 'border-transparent'}`}
-        title={`${user?.displayName} ${isOwner ? '(Владелец)' : ''}`}
-    >
-        {user?.displayName?.[0]?.toUpperCase() || '?'}
+const UserAvatar: React.FC<{ user: User, isOwner: boolean }> = ({ user, isOwner }) => (
+    <div className={`relative ${isOwner ? 'ring-2 ring-accent-dark rounded-full' : ''}`}>
+        <Avatar user={user} className="w-8 h-8" />
     </div>
 );
 
@@ -72,7 +70,7 @@ const Header: React.FC<HeaderProps> = ({
         >
           <Menu size={20} />
         </motion.button>
-        <h1 className="text-lg font-bold truncate text-shadow">{title}</h1>
+        <h1 className="text-lg font-bold truncate">{title}</h1>
          <motion.button
           whileTap={{ scale: 0.9 }}
           onClick={onUndo}
@@ -115,9 +113,16 @@ const Header: React.FC<HeaderProps> = ({
         </motion.button>
         
         <div className="flex items-center -space-x-2 ml-2">
-            {usersToShow.map(user => (
-                <UserAvatar key={user.uid} user={user} isOwner={user.uid === ownerUid} />
+            {usersToShow.slice(0, 5).map(user => (
+              <UserTooltip key={user.uid} user={user} position="bottom">
+                <UserAvatar user={user} isOwner={user.uid === ownerUid} />
+              </UserTooltip>
             ))}
+            {usersToShow.length > 5 && (
+              <div className="w-8 h-8 rounded-full bg-slate-700 text-text-light flex items-center justify-center text-xs font-bold border-2 border-slate-800">
+                +{usersToShow.length - 5}
+              </div>
+            )}
         </div>
         
         {showAddWidgetButton && (

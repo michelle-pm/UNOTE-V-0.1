@@ -1,7 +1,7 @@
 import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
 import { User, Project } from '../types';
 import { getRandomEmoji } from '../utils/emojis';
-import { auth, db } from '../firebase';
+import { auth, db, storage } from '../firebase';
 import { 
     onAuthStateChanged,
     createUserWithEmailAndPassword,
@@ -13,6 +13,7 @@ import {
     EmailAuthProvider
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, addDoc, collection } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 
 interface AuthContextType {
@@ -21,7 +22,7 @@ interface AuthContextType {
   login: (email: string, password?: string, remember?: boolean) => Promise<void>;
   logout: () => void;
   register: (name: string, email: string, password?: string) => Promise<void>;
-  updateUser: (updatedUser: Partial<User>) => Promise<void>;
+  updateUserProfile: (updates: { displayName?: string, photoFile?: File }) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 }
 
@@ -40,8 +41,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 setUser({ uid: firebaseUser.uid, ...userDoc.data() } as User);
             } else {
                  // This might happen if Firestore doc creation failed after auth creation
-                const newUser: User = { uid: firebaseUser.uid, displayName: firebaseUser.displayName || 'Пользователь', email: firebaseUser.email! };
-                await setDoc(userDocRef, { displayName: newUser.displayName, email: newUser.email });
+                const newUser: User = { 
+                    uid: firebaseUser.uid, 
+                    displayName: firebaseUser.displayName || 'Пользователь', 
+                    email: firebaseUser.email!,
+                    photoURL: firebaseUser.photoURL || undefined
+                };
+                await setDoc(userDocRef, { displayName: newUser.displayName, email: newUser.email, photoURL: newUser.photoURL });
                 setUser(newUser);
             }
         } else {
@@ -65,7 +71,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     await updateProfile(firebaseUser, { displayName: name });
     
-    const newUser: Omit<User, 'uid'> = { displayName: name, email };
+    const newUser: Omit<User, 'uid' | 'photoURL'> = { displayName: name, email };
     await setDoc(doc(db, "users", firebaseUser.uid), newUser);
     
     // Create a default project for the new user in Firestore
@@ -82,16 +88,54 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     await addDoc(collection(db, 'projects'), newProject);
   };
 
-  const updateUser = async (updatedUser: Partial<User>) => {
-    if (auth.currentUser) {
-        if (updatedUser.displayName) {
-            await updateProfile(auth.currentUser, { displayName: updatedUser.displayName });
-            const userDocRef = doc(db, "users", auth.currentUser.uid);
-            await setDoc(userDocRef, { displayName: updatedUser.displayName }, { merge: true });
-            
-            // Update local state
-            setUser(prev => prev ? { ...prev, displayName: updatedUser.displayName! } : null);
+  const updateUserProfile = async (updates: { displayName?: string, photoFile?: File }) => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("Пользователь не авторизован.");
+
+    const { displayName, photoFile } = updates;
+    let photoURL: string | undefined = undefined;
+    const userDocRef = doc(db, "users", currentUser.uid);
+    const firestoreUpdates: { displayName?: string, photoURL?: string } = {};
+
+    try {
+        // 1. Upload photo if it exists
+        if (photoFile) {
+            const storageRef = ref(storage, `avatars/${currentUser.uid}`);
+            await uploadBytes(storageRef, photoFile);
+            photoURL = await getDownloadURL(storageRef);
         }
+        
+        // 2. Prepare updates for Auth and Firestore
+        const authUpdates: { displayName?: string, photoURL?: string } = {};
+        if (displayName && displayName !== currentUser.displayName) {
+            authUpdates.displayName = displayName;
+            firestoreUpdates.displayName = displayName;
+        }
+        if (photoURL && photoURL !== currentUser.photoURL) {
+            authUpdates.photoURL = photoURL;
+            firestoreUpdates.photoURL = photoURL;
+        }
+        
+        // 3. Update Firebase Auth profile only if there are changes
+        if (Object.keys(authUpdates).length > 0) {
+            await updateProfile(currentUser, authUpdates);
+        }
+        
+        // 4. Update Firestore user document only if there are changes
+        if (Object.keys(firestoreUpdates).length > 0) {
+            await setDoc(userDocRef, firestoreUpdates, { merge: true });
+        }
+        
+        // 5. Update local state immediately for instant feedback
+        if (Object.keys(firestoreUpdates).length > 0) {
+            setUser(prev => prev ? { 
+                ...prev, 
+                ...firestoreUpdates
+            } : null);
+        }
+    } catch(error) {
+        console.error("Error updating profile:", error);
+        throw new Error("Не удалось обновить профиль.");
     }
   };
 
@@ -127,7 +171,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     login,
     logout,
     register,
-    updateUser,
+    updateUserProfile,
     changePassword
   };
 
